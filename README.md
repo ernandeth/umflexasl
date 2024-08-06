@@ -1,5 +1,11 @@
+# umflexasl
+This is a pulse sequence and code to implement a variety of ASL experiments: 
+as of 8/6/24, you can only do PASL and VSASL.
+working on adding PCASL, VSASL spectrum imaging
+
+
 # umvsasl
-Written by David Frey for the fMRI lab at the University of Michigan, PI: Luis Hernandez-Garcia
+Forked from :umvsasl, written by David Frey for the fMRI lab at the University of Michigan, PI: Luis Hernandez-Garcia
 
 Welcome to our umvsasl project repository. This project implements an end-to-end pipeline for pulse sequence development and image reconstruction for ASL (Arterial Spin Labeling) MRI experiments.
 
