@@ -2912,28 +2912,42 @@ STATUS scan( void )
 
 	/* loop through frames and shots */
 	for (framen = 0; framen < nframes; framen++) {
+		
+		if ( fmod(framen, vel_sweep_frames) == 0	)
+		{
+			vel_target += vel_target_inc;
+			fprintf(stderr, "\n\n scan() velocity spectrum: updating for prep1 pulse for vel %f \n", vel_target);
+		}				
+
+		if (pcasl_flag	&& pcasl_calib) {
+			/* if we want to calibrate the phase correction to correct for off-resonance
+				we increment the size of the phase steps between pulses.
+				We will do this every 'pcasl_calib_frames' frames - must be an even number! */
+			nm0frames = 0;
+			phs_cal_step = 2*M_PI/(nframes/pcasl_calib_frames);
+
+			if (ctr > pcasl_calib_frames-1 ){
+				ctr = 0;
+				pcasl_delta_phs += phs_cal_step;
+				fprintf(stderr, "\n\n scan() CALIBRATION: updating PCASL linear phase increment: %f (rads) and phase table\n\n", pcasl_delta_phs);
+				/* update the pcasl phase table */
+				/*calc_pcasl_phases(pcasl_iphase_tbl, pcasl_delta_phs, MAXPCASLSEGMENTS);*/
+			}
+			ctr++;
+			fprintf(stderr, "\nscan(): Phase calibration counter: %d \n", ctr); 
+		}
+
 		for (armn = 0; armn < narms; armn++) {
+
 			for (shotn = 0; shotn < opnshots; shotn++) {
 
-				if (pcasl_flag	&& pcasl_calib) {
-					/* if we want to calibrate the phase correction to correct for off-resonance
-					   we increment the size of the phase steps between pulses.
-					   We will do this every 'pcasl_calib_frames' frames - must be an even number! */
-					nm0frames = 0;
-					phs_cal_step = 2*M_PI/(nframes/pcasl_calib_frames);
-
-					if (ctr > pcasl_calib_frames-1 ){
-						ctr = 0;
-						pcasl_delta_phs += phs_cal_step;
-						fprintf(stderr, "\n\n scan() CALIBRATION: updating PCASL linear phase increment: %f (rads) and phase table\n\n", pcasl_delta_phs);
-						/* update the pcasl phase table */
-						/*calc_pcasl_phases(pcasl_iphase_tbl, pcasl_delta_phs, MAXPCASLSEGMENTS);*/
-					}
-					ctr++;
-					fprintf(stderr, "\nscan(): Phase calibration counter: %d \n", ctr); 
+				/* changing phase waveform to target a new velocity in velocity spectrum */
+_				if (doVelSpectrum){
+						fprintf(stderr, "\n\n scan() velocity spectrum: updating phase waveform .. \n");
+						calc_prep_phs_from_velocity (prep1_rho_lbl, prep1_theta_lbl, prep1_grad_ctl, vel_target, prep1_len, prep1_gmax);
+						movewaveimm(prep_pulse_phs, &prep1_theta_ctl, (int)0, res_prep1_theta_ctl, TOHARDWARE);
+						movewaveimm(prep_pulse_phs, &prep1_theta_lbl, (int)0, res_prep1_theta_lbl, TOHARDWARE);
 				}
-
-
 
 				/* set amplitudes for rf calibration modes */
 				calib_scale = (float)framen / (float)(nframes - 1);
