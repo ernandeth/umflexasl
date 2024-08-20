@@ -3,6 +3,8 @@
  * Language  : EPIC/ANSI C
  * Date      : july 31, 2024 
  *
+ * this is velocity spectrum imaging branch
+ *
  * Based on sequence by 
  * David Frey
  * University of Michigan Medicine Department of Radiology
