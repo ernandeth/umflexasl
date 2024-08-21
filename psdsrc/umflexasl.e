@@ -246,9 +246,10 @@ float	pcasl_distance_adjust; /*cm - distance from the iso-center after table mov
 float	pcasl_RFfreq;
 
 /* adding velocity selectivity shift to the VSI pulses (optional)*/
+int	doVelSpectrum=0;
 float	vel_target = 0.0;
-int		vel_sweep = 0;
-int		vel_sweep_frames = 2;
+int	vel_sweep = 0;
+int	vel_sweep_frames = 2;
 float	vel_target_incr = 0.0;
 int	min_dur_pcaslcore = 0;
 int	zero_CTL_grads = 0; /* option to use zero gradients for the control pulses */
@@ -351,13 +352,14 @@ int init_pcasl_phases(
 		int nreps);
 
 /* declare prototypes for VSASL spectrum */
-int calc_prep_phs_from_velocity (
-	int* prep_pulse_mag, 
-	int* prep_pulse_phs, 
-	int* prep_pulse_grad, 
+/* int calc_prep_phs_from_velocity (
+	short* prep_pulse_mag, 
+	short* prep_pulse_phs, 
+	short* prep_pulse_grad, 
 	float vel_target, 
 	int vsi_train_len, 
 	double vsi_Gmax);
+*/
 
 @inline Prescan.e PShostVars            /* added with new filter calcs */
 
@@ -1129,13 +1131,6 @@ STATUS predownload( void )
 	a_prep2gradctl = (prep2_id > 0) ? (prep2_gmax) : (0); 
 	ia_prep2gradctl = (int)ceil(a_prep2gradctl / ZGRAD_max * (float)MAX_PG_WAMP);
 
-	/* Adjust the  phase prep1 VS pulse so that we can do velocity targetting*/
-	if (vel_target > 0.0 )
-	{
-		fprintf(stderr, "calc_seqparms(): calling calc_prep_phs_from_velocity() to adjust the phase on prep 1 \n");
-		calc_prep_phs_from_velocity(prep1_rho_lbl, prep1_theta_lbl, prep1_grad_lbl, vel_target, prep1_len, prep1_gmax);
-	}
-	
 	/* ---------------------------------------------*/
 	/* update the PCASL train specific calculations  */
 	/* ---------------------------------------------*/
@@ -2658,7 +2653,7 @@ int play_aslprep(int type, s32* off_ctlcore, s32* off_lblcore, int dur, int tbgs
 	return ttotal;
 }
 
-/* LHG 12/6/12 : compute the linear phase increment of the PCASL pulses */
+/* LHG 12/6/12 : compute the linear phase increment of the PCASL pulses - NOT USED currently*/
 int calc_pcasl_phases(int *iphase_tbl, float  myphase_increment, int nreps)
 {
         int     n;
@@ -2678,6 +2673,62 @@ int calc_pcasl_phases(int *iphase_tbl, float  myphase_increment, int nreps)
 	return 1;
 }               
         
+
+int calc_prep_phs_from_velocity (int* prep_pulse_mag, int* prep_pulse_phs, int* prep_pulse_grad, float vel_target, int vsi_train_len, double vsi_Gmax)
+{
+/* This function adds a linear phase shift to the velocity selective pulses
+ in order to shift the velocity selectivity profile to a different velocity */
+
+	/* GAMMA_H1 26754 in (rad/s)/Gauss */
+	double phase_val;
+	double grad_val;
+	double pos=0.0;
+	double dt = 4e-6;
+	double delta_phs = 0.0;
+	int 	i;
+	int	DACMAX = 32766;
+	int	tmp;
+	double  pulseMax = 0.0;
+
+
+	/* find the segments with 180 degree pulses- assume the 180s have the highest B1 in the train */
+	for (i=0; i<vsi_train_len; i++)
+	{
+		if (pulseMax < prep_pulse_mag[i] ) 
+			pulseMax = prep_pulse_phs[i] ;
+
+	}
+
+
+	for (i=1; i<vsi_train_len; i++)
+	{
+		/* from DAC units to radians */
+		phase_val = M_PI * (double)(prep_pulse_phs[i]) /  (double)FS_PI  ; 		
+		/* from DAC units to G/cm */
+		grad_val = vsi_Gmax * (double)(prep_pulse_grad[i]) / (double)DACMAX ;
+
+		/* calc the phase gained by moving spins during THIS dt interval */
+		pos += vel_target*dt; 
+		delta_phs += GAMMA * grad_val * pos * dt ;
+
+		/* change the phase of the pulse accordingly */
+		phase_val -=  delta_phs;
+
+		/* from radians to DAC ... unwrap first  , then make them even numbers only. */	
+		phase_val = atan2( sin(phase_val), cos(phase_val));
+		tmp = (int)(phase_val / M_PI * FS_PI);
+		prep_pulse_phs[i] = 2*(tmp/2);
+	}
+
+	for (i=0; i<vsi_train_len; i++)
+	{
+		if (prep_pulse_mag[i] == 0) 
+			prep_pulse_phs[i] = 0;
+
+	}
+
+	return 1;
+}	
 
 /* function for playing fat sup pulse */
 int play_fatsup() {
@@ -2850,7 +2901,7 @@ STATUS scan( void )
 	int ttotal = 0;
 	int rotidx;
 	float calib_scale;
-	int ctr=0;
+	int sweepctr=0;
 
 	fprintf(stderr, "scan(): beginning scan (t = %d / %.0f us)...\n", ttotal, pitscan);	
 	
@@ -2912,44 +2963,55 @@ STATUS scan( void )
 	}
 
 
-	/* loop through frames and shots */
+	/* loop through frames arms and shots 
+	frames are the number images in the time series
+	shots are the number of kzsteps in stack of spirals, and also the number of echoes in the echo train
+	arms is the spiral z-rotations in SOS, or also the second axis rotation in SERIOS*/
 	for (framen = 0; framen < nframes; framen++) {
-		
-		if ( fmod(framen, vel_sweep_frames) == 0	)
-		{
-			vel_target += vel_target_inc;
-			fprintf(stderr, "\n\n scan() velocity spectrum: updating for prep1 pulse for vel %f \n", vel_target);
-		}				
 
+		/* If we're doing velocity spectrum imaging, 
+		   we have to sweep through a number of target velocities
+		   incrementing the target velocity every vel_sweep_frames */	
+		if (doVelSpectrum){
+			fprintf(stderr, "\nscan(): velocity spectrum temp counter: %d \n", sweepctr); 
+			if (sweepctr == vel_sweep_frames){
+				sweepctr = 0;
+				vel_target += vel_target_incr;
+				fprintf(stderr, "\n\n scan() velocity spectrum: updating for prep1 pulse for vel %f \n", vel_target);
+			}	
+			sweepctr++ ;
+		}			
+
+		/* Now Adjust the  phase prep1 VS pulse so that we can do velocity targetting*/
+		if (vel_target > 0.0 )
+		{
+			fprintf(stderr, "calc_seqparms(): calling calc_prep_phs_from_velocity() to adjust the phase on prep 1 \n");
+			calc_prep_phs_from_velocity(prep1_rho_lbl, prep1_theta_lbl, prep1_grad_lbl, vel_target, prep1_len, prep1_gmax);
+			movewaveimm((short*)prep1_theta_ctl, &prep1thetactl, (int)0, res_prep1thetactl, TOHARDWARE);
+			movewaveimm((short*)prep1_theta_lbl, &prep1thetalbl, (int)0, res_prep1thetalbl, TOHARDWARE);
+		}
+
+		/* if we want to calibrate the phase correction to correct for off-resonance
+		   we increment the size of the phase steps between pulses.
+		   We will do this every 'pcasl_calib_frames' frames - must be an even number! */
 		if (pcasl_flag	&& pcasl_calib) {
-			/* if we want to calibrate the phase correction to correct for off-resonance
-				we increment the size of the phase steps between pulses.
-				We will do this every 'pcasl_calib_frames' frames - must be an even number! */
 			nm0frames = 0;
 			phs_cal_step = 2*M_PI/(nframes/pcasl_calib_frames);
 
-			if (ctr > pcasl_calib_frames-1 ){
-				ctr = 0;
+			fprintf(stderr, "\nscan(): Phase calibration counter: %d \n", sweepctr); 
+			if (sweepctr == pcasl_calib_frames ){
+				sweepctr = 0;
 				pcasl_delta_phs += phs_cal_step;
 				fprintf(stderr, "\n\n scan() CALIBRATION: updating PCASL linear phase increment: %f (rads) and phase table\n\n", pcasl_delta_phs);
-				/* update the pcasl phase table */
-				/*calc_pcasl_phases(pcasl_iphase_tbl, pcasl_delta_phs, MAXPCASLSEGMENTS);*/
+				/* update the pcasl phase table - NOT USED currently */
+				/* calc_pcasl_phases(pcasl_iphase_tbl, pcasl_delta_phs, MAXPCASLSEGMENTS);*/
 			}
-			ctr++;
-			fprintf(stderr, "\nscan(): Phase calibration counter: %d \n", ctr); 
+			sweepctr++;
 		}
 
 		for (armn = 0; armn < narms; armn++) {
 
 			for (shotn = 0; shotn < opnshots; shotn++) {
-
-				/* changing phase waveform to target a new velocity in velocity spectrum */
-_				if (doVelSpectrum){
-						fprintf(stderr, "\n\n scan() velocity spectrum: updating phase waveform .. \n");
-						calc_prep_phs_from_velocity (prep1_rho_lbl, prep1_theta_lbl, prep1_grad_ctl, vel_target, prep1_len, prep1_gmax);
-						movewaveimm(prep_pulse_phs, &prep1_theta_ctl, (int)0, res_prep1_theta_ctl, TOHARDWARE);
-						movewaveimm(prep_pulse_phs, &prep1_theta_lbl, (int)0, res_prep1_theta_lbl, TOHARDWARE);
-				}
 
 				/* set amplitudes for rf calibration modes */
 				calib_scale = (float)framen / (float)(nframes - 1);
@@ -3460,62 +3522,6 @@ int init_pcasl_phases(int *iphase_tbl, float  myphase_increment, int nreps)
 	return 1;
 }               
         
-
-int calc_prep_phs_from_velocity (int* prep_pulse_mag, int* prep_pulse_phs, int* prep_pulse_grad, float vel_target, int vsi_train_len, double vsi_Gmax)
-{
-/* This function adds a linear phase shift to the velocity selective pulses
- in order to shift the velocity selectivity profile to a different velocity */
-
-	/* GAMMA_H1 26754 in (rad/s)/Gauss */
-	double phase_val;
-	double grad_val;
-	double pos=0.0;
-	double dt = 4e-6;
-	double delta_phs = 0.0;
-	int 	i;
-	int	DACMAX = 32766;
-	int	tmp;
-	double  pulseMax = 0.0;
-
-
-	/* find the segments with 180 degree pulses- assume the 180s have the highest B1 in the train */
-	for (i=0; i<vsi_train_len; i++)
-	{
-		if (pulseMax < prep_pulse_mag[i] ) 
-			pulseMax = prep_pulse_phs[i] ;
-
-	}
-
-
-	for (i=1; i<vsi_train_len; i++)
-	{
-		/* from DAC units to radians */
-		phase_val = M_PI * (double)(prep_pulse_phs[i]) /  (double)FS_PI  ; 		
-		/* from DAC units to G/cm */
-		grad_val = vsi_Gmax * (double)(prep_pulse_grad[i]) / (double)DACMAX ;
-
-		/* calc the phase gained by moving spins during THIS dt interval */
-		pos += vel_target*dt; 
-		delta_phs += GAMMA * grad_val * pos * dt ;
-
-		/* change the phase of the pulse accordingly */
-		phase_val -=  delta_phs;
-
-		/* from radians to DAC ... unwrap first  , then make them even numbers only. */	
-		phase_val = atan2( sin(phase_val), cos(phase_val));
-		tmp = (int)(phase_val / M_PI * FS_PI);
-		prep_pulse_phs[i] = 2*(tmp/2);
-	}
-
-	for (i=0; i<vsi_train_len; i++)
-	{
-		if (prep_pulse_mag[i] == 0) 
-			prep_pulse_phs[i] = 0;
-
-	}
-
-	return 1;
-}	
 
 /*in the absence of MRF schedule files, configure the PCASL label and control schedules , including BGS pulses
 these timings will be in us units*/
