@@ -219,8 +219,8 @@ int prep2_b1calib = 0 with {0, 1, 0, VIS, "ASL prep pulse 2: option to sweep B1 
 int pcasl_pld 	= 1500*1e3 with {0, , 0, VIS, "PCASL prep  : (ms) post-labeling delay ( includes background suppression)",};
 int pcasl_duration = 1500*1e3 with {0, , 0, VIS, "PCASL prep  : (ms) Labeling Duration)",}; /* this is the bolus duration, NOT the duration of a single cycle */
 int pcasl_mod 	= 1 with {1, 4, 1, VIS, "PCASL prep  : labeling modulation scheme (1 = label/control, 2 = control/label, 3 = always label, 4 = always control)",};
-int pcasl_tbgs1 = 0 with {0, , 0, VIS, "PCASL prep  : (ms) 1st background suppression delay (0 = no pulse)",};
-int pcasl_tbgs2 = 0 with {0, , 0, VIS, "PCASL prep  : (ms) 2nd background suppression delay (0 = no pulse)",};
+int pcasl_tbgs1 = 0 with {0, , 0, VIS, "PCASL prep  : (us) 1st background suppression delay (0 = no pulse)",};
+int pcasl_tbgs2 = 0 with {0, , 0, VIS, "PCASL prep  : (us) 2nd background suppression delay (0 = no pulse)",};
 
 int	pcasl_flag = 1; /* when this is turned to 1, prep1 pulse gets replaced with a PCASL pulse*/
 int	pcasl_calib = 0 with {0, 1 , 0, VIS, "do PCASL phase calibration?",};
