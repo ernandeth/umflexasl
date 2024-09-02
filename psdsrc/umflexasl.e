@@ -3122,8 +3122,10 @@ STATUS scan( void )
 				/* play disdaq echoes */
 				for (echon = 0; echon < ndisdaqechoes; echon++) {
 					fprintf(stderr, "scan(): playing flip pulse for frame %d, shot %d, disdaq echo %d (t = %d / %.0f us)...\n", framen, shotn, echon, ttotal, pitscan);
-					if (ro_type == 1) /* FSE - CPMG */
-						ttotal += play_rf1(90);
+					if (ro_type == 1) {/* FSE - CPMG */
+						ttotal += play_rf1(90 * phscycle);
+						phscycle *= -1.0;
+					}
 					else
 						ttotal += play_rf1(rfspoil_flag*117*echon);
 
