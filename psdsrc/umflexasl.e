@@ -164,6 +164,9 @@ int nframes = 2 with {1, , 2, VIS, "number of frames",};
 int ndisdaqtrains = 2 with {0, , 2, VIS, "number of disdaq echo trains at beginning of scan loop",};
 int ndisdaqechoes = 0 with {0, , 0, VIS, "number of disdaq echos at beginning of echo train",};
 
+int varflip = 0 with {0,1,0, VIS, "do variable flip angles (FSE case)", };
+float arf180; 
+
 int ro_type = 2 with {1, 3, 2, VIS, "FSE (1), SPGR (2), or bSSFP (3)",};
 int fatsup_mode = 1 with {0, 3, 1, VIS, "none (0), CHESS (1), or SPIR (2)",};
 int fatsup_off = -520 with { , , -520, VIS, "fat suppression pulse frequency offset (Hz)",};
@@ -944,6 +947,7 @@ STATUS predownload( void )
 	float kzmax;
 	int minesp, minte, absmintr;	
 	float rf0_b1, rf1_b1;
+	float rf180_b1;
 	float rfps1_b1, rfps2_b1, rfps3_b1, rfps4_b1;
 	float rffs_b1, rfbs_b1;
 	float prep1_b1, prep2_b1;
@@ -1019,6 +1023,8 @@ STATUS predownload( void )
 	fprintf(stderr, "predownload(): maximum B1 for rf0 pulse: %f\n", rf0_b1);
 	if (rf0_b1 > maxB1[L_SCAN]) maxB1[L_SCAN] = rf0_b1;
 
+	rf180_b1 = calc_sinc_B1(cyc_rf1, pw_rf1, 180);
+
 	rf1_b1 = calc_sinc_B1(cyc_rf1, pw_rf1, opflip);
 	fprintf(stderr, "predownload(): maximum B1 for rf1 pulse: %f\n", rf1_b1);
 	if (rf1_b1 > maxB1[L_SCAN]) maxB1[L_SCAN] = rf1_b1;
@@ -1090,7 +1096,10 @@ STATUS predownload( void )
 	/* Update all the rf amplitudes */
 	a_rf0 = rf0_b1 / maxB1Seq;
 	ia_rf0 = a_rf0 * MAX_PG_WAMP;
-	
+
+	/* (this one is for the variable flip angle calculation) */
+	arf180 = rf180_b1 / maxB1Seq;	
+
 	a_rf1 = rf1_b1 / maxB1Seq;
 	ia_rf1 = a_rf1 * MAX_PG_WAMP;
 
@@ -2926,6 +2935,7 @@ STATUS scan( void )
 	int sweepctr=0;
 	short *phsbuffer;
 	float phscycle = 1.0;
+	float arf1_var = 0;
 
 	fprintf(stderr, "scan(): beginning scan (t = %d / %.0f us)...\n", ttotal, pitscan);
 
@@ -3137,6 +3147,11 @@ STATUS scan( void )
 				for (echon = 0; echon < opetl; echon++) {
 					fprintf(stderr, "scan(): playing flip pulse for frame %d, shot %d, echo %d (t = %d / %.0f us)...\n", framen, shotn, echon, ttotal, pitscan);
 					if (ro_type == 1){ /* FSE - CPMG */
+						if(varflip)
+						{
+							arf1_var = a_rf1 + (float)echon*(arf180-a_rf1)/(float)(opetl-1); 
+							setiamp(arf1_var * MAX_PG_WAMP, &rf1,0);
+						}
 						/* setphase(90*phscycle, &echo1, 0);*/
 						ttotal += play_rf1(90 * phscycle);
 						/* phscycle *= -1.0; */
