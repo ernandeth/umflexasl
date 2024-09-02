@@ -351,11 +351,10 @@ int init_pcasl_phases(
 		float  myphase_increment, 
 		int nreps);
 
-/* declare prototypes for VSASL spectrum */
 /* int calc_prep_phs_from_velocity (
-	short* prep_pulse_mag, 
-	short* prep_pulse_phs, 
-	short* prep_pulse_grad, 
+	int* prep_pulse_mag, 
+	int* prep_pulse_phs, 
+	int* prep_pulse_grad, 
 	float vel_target, 
 	int vsi_train_len, 
 	double vsi_Gmax);
@@ -1791,12 +1790,24 @@ STATUS predownload( void )
 #include "support_func.h"
 #include "epicfuns.h"
 
+/* waveform pointers for real time updates in the scan loop 
+we use them for updating the phase of the prep pulse in velocity spectrum imaging*/
+WF_HW_WAVEFORM_PTR 	phsbuffer1_wf;
+WF_HW_WAVEFORM_PTR 	phsbuffer2_wf;
+
+
+/* function to reserve memory for a dynamically updated waveform */
+void tp_wreserve(WF_PROCESSOR wfp, WF_HW_WAVEFORM_PTR *wave_addr, int n) 
+{
+    SeqData seqdata;
+    getWaveSeqDataWavegen(&seqdata, wfp, 0, 0, 0, PULSE_CREATE_MODE);
+    *wave_addr = wreserve(seqdata, n);
+}
 
 STATUS pulsegen( void )
 {
 	sspinit(psd_board_type);
 	int tmploc;	
-
 	/*********************************/
 	/* Generate PCASL core */
 	/*********************************/	
@@ -2162,7 +2173,6 @@ STATUS pulsegen( void )
 	SEQLENGTH(emptycore, 1000, emptycore);
 	fprintf(stderr, "\tDone.\n");
 
-
 @inline Prescan.e PSpulsegen
 
 	PASSPACK(endpass, 49ms);   /* tell Signa system we're done */
@@ -2170,6 +2180,13 @@ STATUS pulsegen( void )
 
 	buildinstr();              /* load the sequencer memory       */
 	fprintf(stderr, "\tDone with pulsegen().\n");
+
+	/* reserve memory for waveform buffers in waveform memory (IPG?)
+	for the phase of the prep pulses.
+	use these for dynamic updates of the phase waveforms in the scan loop */
+	tp_wreserve(TYPTHETA, &phsbuffer1_wf, res_prep1thetalbl);
+	tp_wreserve(TYPTHETA, &phsbuffer2_wf, res_prep1thetactl);
+
 
 	return SUCCESS;
 }   /* end pulsegen() */
@@ -2235,6 +2252,10 @@ int seqCount;
  * short, int, long, float, double, and 1D arrays of those types.    *
  *********************************************************************/
 #include <math.h>
+
+/* declare the seqdata object for dynamic updates of waveform using movewaveimmrsp) */
+SeqData	sdTheta1, sdTheta2;
+
 
 /* For IPG Simulator: will generate the entry point list in the IPG tool */
 const CHAR *entry_name_list[ENTRY_POINT_MAX] = {
@@ -2674,38 +2695,27 @@ int calc_pcasl_phases(int *iphase_tbl, float  myphase_increment, int nreps)
 }               
         
 
-int calc_prep_phs_from_velocity (int* prep_pulse_mag, int* prep_pulse_phs, int* prep_pulse_grad, float vel_target, int vsi_train_len, double vsi_Gmax)
+int calc_prep_phs_from_velocity (int* prep_pulse_phs, short* prep_pulse_phs_out, int* prep_pulse_grad, float vel_target, int vsi_train_len, float vsi_Gmax)
 {
 /* This function adds a linear phase shift to the velocity selective pulses
  in order to shift the velocity selectivity profile to a different velocity */
 
 	/* GAMMA_H1 26754 in (rad/s)/Gauss */
-	double phase_val;
-	double grad_val;
-	double pos=0.0;
-	double dt = 4e-6;
-	double delta_phs = 0.0;
+	float phase_val;
+	float grad_val;
+	float pos=0.0;
+	float dt = 4e-6;
+	float delta_phs = 0.0;
 	int 	i;
 	int	DACMAX = 32766;
-	int	tmp;
-	double  pulseMax = 0.0;
-
-
-	/* find the segments with 180 degree pulses- assume the 180s have the highest B1 in the train */
-	for (i=0; i<vsi_train_len; i++)
-	{
-		if (pulseMax < prep_pulse_mag[i] ) 
-			pulseMax = prep_pulse_phs[i] ;
-
-	}
-
+	short	tmp;
 
 	for (i=1; i<vsi_train_len; i++)
 	{
 		/* from DAC units to radians */
-		phase_val = M_PI * (double)(prep_pulse_phs[i]) /  (double)FS_PI  ; 		
+		phase_val = M_PI * (float)(prep_pulse_phs[i]) /  (float)FS_PI  ; 		
 		/* from DAC units to G/cm */
-		grad_val = vsi_Gmax * (double)(prep_pulse_grad[i]) / (double)DACMAX ;
+		grad_val = vsi_Gmax * (float)(prep_pulse_grad[i]) / (float)DACMAX ;
 
 		/* calc the phase gained by moving spins during THIS dt interval */
 		pos += vel_target*dt; 
@@ -2716,16 +2726,22 @@ int calc_prep_phs_from_velocity (int* prep_pulse_mag, int* prep_pulse_phs, int* 
 
 		/* from radians to DAC ... unwrap first  , then make them even numbers only. */	
 		phase_val = atan2( sin(phase_val), cos(phase_val));
-		tmp = (int)(phase_val / M_PI * FS_PI);
-		prep_pulse_phs[i] = 2*(tmp/2);
-	}
+		phase_val = phase_val * (float)(FS_PI) / M_PI;
+		tmp = (short)(phase_val);
 
+		/* make sure they are even numbers */
+		prep_pulse_phs_out[i] = 2*(tmp/2);
+	}
+	
 	for (i=0; i<vsi_train_len; i++)
 	{
-		if (prep_pulse_mag[i] == 0) 
-			prep_pulse_phs[i] = 0;
+		if (prep_pulse_phs[i] == 0) 
+			prep_pulse_phs_out[i] = 0;
 
 	}
+	/* make sure the EOS bit is set at the end, by adding 1 to the last number */
+	prep_pulse_phs_out[vsi_train_len - 1] += 1;
+
 
 	return 1;
 }	
@@ -2902,9 +2918,15 @@ STATUS scan( void )
 	int rotidx;
 	float calib_scale;
 	int sweepctr=0;
+	short *phsbuffer;
 
-	fprintf(stderr, "scan(): beginning scan (t = %d / %.0f us)...\n", ttotal, pitscan);	
-	
+	fprintf(stderr, "scan(): beginning scan (t = %d / %.0f us)...\n", ttotal, pitscan);
+
+	/* generate seqData objects to contain the phase waveform in HW memory 
+	so we can be update the prep pulse phase waveforms inside the scan loop*/
+	getWaveSeqDataWavegen(&sdTheta1, TYPTHETA, 0, 0, 0, PULSE_CREATE_MODE);	
+	getWaveSeqDataWavegen(&sdTheta2, TYPTHETA, 0, 0, 0, PULSE_CREATE_MODE);	
+	phsbuffer = (short*)AllocNode(prep1_len*sizeof(short));
 	
 	/* Play an empty acquisition to reset the DAB after prescan */
 	if (disdaqn == 0) {
@@ -2985,10 +3007,29 @@ STATUS scan( void )
 		/* Now Adjust the  phase prep1 VS pulse so that we can do velocity targetting*/
 		if (vel_target > 0.0 )
 		{
-			fprintf(stderr, "calc_seqparms(): calling calc_prep_phs_from_velocity() to adjust the phase on prep 1 \n");
-			calc_prep_phs_from_velocity(prep1_rho_lbl, prep1_theta_lbl, prep1_grad_lbl, vel_target, prep1_len, prep1_gmax);
-			movewaveimm((short*)prep1_theta_ctl, &prep1thetactl, (int)0, res_prep1thetactl, TOHARDWARE);
-			movewaveimm((short*)prep1_theta_lbl, &prep1thetalbl, (int)0, res_prep1thetalbl, TOHARDWARE);
+			fprintf(stderr, "scan(): calling calc_prep_phs_from_velocity() to adjust the phase on prep 1 \n");
+			
+			/* calculate the new phase waveform for the theta channel */
+			calc_prep_phs_from_velocity(prep1_theta_lbl, phsbuffer, prep1_grad_lbl, vel_target, prep1_len, prep1_gmax);
+			fprintf(stderr, "scan(): ... done \n");
+			/* copy the new phase buffer to the hardware memory buffer*/
+			fprintf(stderr, "scan(): moving the waveform into the wf memoery \n");
+			movewaveimmrsp(sdTheta1, phsbuffer, phsbuffer1_wf, prep1_len, TOHARDWARE);
+			fprintf(stderr, "scan(): ... done \n");
+			/* set the waveform object to point to the memory location we just updated*/
+			fprintf(stderr, "scan(): pointing the prep1 pulse to the new waveform [this seems to kill the scan]]\n");
+			setwave(phsbuffer1_wf, &prep1thetalbl, 0);  
+			fprintf(stderr, "scan(): ... done \n");
+
+
+			/* do the same thing with the control pulse */
+
+			/* calculate the new phase waveform for the theta channel */
+			/* calc_prep_phs_from_velocity(prep1_theta_ctl, phsbuffer, prep1_grad_ctl, vel_target, prep1_len, prep1_gmax);*/
+			/* copy the new phase buffer to the hardware memory buffer*/
+			/* movewaveimmrsp(sdTheta2, phsbuffer, phsbuffer2_wf, prep1_len, TOHARDWARE); */
+			/* set the waveform object to point to the memory location we just updated*/
+			/* setwave(phsbuffer2_wf, &prep2thetactl, 0);*/
 		}
 
 		/* if we want to calibrate the phase correction to correct for off-resonance
@@ -3120,6 +3161,10 @@ STATUS scan( void )
 			}
 		}
 	}
+
+	FreeNode(phsbuffer);
+	FreeNode(&phsbuffer1_wf);
+	FreeNode(&phsbuffer2_wf);
 
 	fprintf(stderr, "scan(): reached end of scan, sending endpass packet (t = %d / %.0f us)...\n", ttotal, pitscan);
 	play_endscan();
