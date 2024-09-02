@@ -2966,7 +2966,7 @@ STATUS scan( void )
 			fprintf(stderr, "scan(): playing flip pulse for disdaq train %d (t = %d / %.0f us)...\n", disdaqn, ttotal, pitscan);
 			if (ro_type == 1) {/* FSE - CPMG */
 				ttotal += play_rf1(90 * phscycle);
-				phscycle *= -1.0;
+				/* phscycle *= -1.0;*/
 				}
 			else
 				ttotal += play_rf1(0);
@@ -3124,7 +3124,7 @@ STATUS scan( void )
 					fprintf(stderr, "scan(): playing flip pulse for frame %d, shot %d, disdaq echo %d (t = %d / %.0f us)...\n", framen, shotn, echon, ttotal, pitscan);
 					if (ro_type == 1) {/* FSE - CPMG */
 						ttotal += play_rf1(90 * phscycle);
-						phscycle *= -1.0;
+						/* phscycle *= -1.0; */
 					}
 					else
 						ttotal += play_rf1(rfspoil_flag*117*echon);
@@ -3133,10 +3133,14 @@ STATUS scan( void )
 					ttotal += play_deadtime(dur_seqcore);
 				}
 
+				/* play the actual echo train */
 				for (echon = 0; echon < opetl; echon++) {
 					fprintf(stderr, "scan(): playing flip pulse for frame %d, shot %d, echo %d (t = %d / %.0f us)...\n", framen, shotn, echon, ttotal, pitscan);
-					if (ro_type == 1) /* FSE - CPMG */
-						ttotal += play_rf1(90);
+					if (ro_type == 1){ /* FSE - CPMG */
+						/* setphase(90*phscycle, &echo1, 0);*/
+						ttotal += play_rf1(90 * phscycle);
+						/* phscycle *= -1.0; */
+					}
 					else {
 						ttotal += play_rf1(rfspoil_flag*117*(echon + ndisdaqechoes));
 						setphase(rfspoil_flag*117*(echon + ndisdaqechoes), &echo1, 0);
