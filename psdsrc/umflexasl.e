@@ -2778,7 +2778,8 @@ int play_rf0(float phs) {
 	return ttotal;	
 }
 
-/* function for playing GRE rf1 pulse */
+/* function for playing GRE rf1 pulse
+in FSE mode, this serves as the refocuser (180) */
 int play_rf1(float phs) {
 	int ttotal = 0;
 
@@ -2832,6 +2833,7 @@ STATUS prescanCore() {
 	
 	for (view = 1 - rspdda; view < rspvus + 1; view++) {
 
+
 		if (ro_type == 1) { /* FSE - play 90 */
 			fprintf(stderr, "prescanCore(): playing 90deg FSE tipdown for prescan iteration %d...\n", view);
 			play_rf0(0);
@@ -2860,8 +2862,12 @@ STATUS prescanCore() {
 		setrotate( tmtx0, 0 );
 
 		fprintf(stderr, "prescanCore(): playing deadtime for prescan iteration %d...\n", view);
-		play_deadtime(100ms);
 
+		if (ro_type==1)
+			play_deadtime(optr - opetl * (dur_rf1core + TIMESSI + dur_seqcore + TIMESSI) - dur_rf0core);
+		else
+			play_deadtime(optr - opetl * (dur_rf1core + TIMESSI + dur_seqcore + TIMESSI) );
+			
 	}
 
 	rspexit();
@@ -2919,6 +2925,7 @@ STATUS scan( void )
 	float calib_scale;
 	int sweepctr=0;
 	short *phsbuffer;
+	float phscycle = 1.0;
 
 	fprintf(stderr, "scan(): beginning scan (t = %d / %.0f us)...\n", ttotal, pitscan);
 
@@ -2957,8 +2964,10 @@ STATUS scan( void )
 		/* Loop through echoes */
 		for (echon = 0; echon < opetl+ndisdaqechoes; echon++) {
 			fprintf(stderr, "scan(): playing flip pulse for disdaq train %d (t = %d / %.0f us)...\n", disdaqn, ttotal, pitscan);
-			if (ro_type == 1) /* FSE - CPMG */
-				ttotal += play_rf1(90);
+			if (ro_type == 1) {/* FSE - CPMG */
+				ttotal += play_rf1(90 * phscycle);
+				phscycle *= -1.0;
+				}
 			else
 				ttotal += play_rf1(0);
 
