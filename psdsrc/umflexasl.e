@@ -2852,6 +2852,7 @@ STATUS prescanCore() {
 		play_rf1(90*(ro_type == 1));
 			
 		/* Load the DAB */	
+		/*
 		if (view < 1 || n < ndisdaqechoes) {
 			fprintf(stderr, "prescanCore(): loaddab(&echo1, 0, 0, 0, 0, DABOFF, PSD_LOAD_DAB_ALL)...\n");
 			loaddab(&echo1, 0, 0, 0, 0, DABOFF, PSD_LOAD_DAB_ALL);
@@ -2859,13 +2860,23 @@ STATUS prescanCore() {
 		else {
 			fprintf(stderr, "prescanCore(): loaddab(&echo1, 0, 0, 0, %d, DABON, PSD_LOAD_DAB_ALL)...\n", view);
 			loaddab(&echo1, 0, 0, 0, view, DABON, PSD_LOAD_DAB_ALL);
-		}
-
+		}*/
 		/* kill gradients */				
 		setrotate( zmtx, 0 );
 
-		fprintf(stderr, "prescanCore(): playing readout for prescan iteration %d...\n", view);
-		play_readout();
+		for (echon=0; echon < opetl; echon++){
+			if (echon==0){ /* use only the data from the first echo*/
+				fprintf(stderr, "prescanCore(): loaddab(&echo1, 0, 0, 0, %d, DABON, PSD_LOAD_DAB_ALL)...\n", view);
+				loaddab(&echo1, 0, 0, DABSTORE, view, DABON, PSD_LOAD_DAB_ALL);
+			}
+			else
+			{
+				fprintf(stderr, "prescanCore(): loaddab(&echo1, 0, 0, 0, %d, DABOFF, PSD_LOAD_DAB_ALL)...\n", view);
+				loaddab(&echo1, 0, 0, DABSTORE, view, DABOFF, PSD_LOAD_DAB_ALL);
+			}
+			fprintf(stderr, "prescanCore(): playing readout for prescan iteration %d...\n", view);
+			play_readout();
+		}
 
 		/* restore gradients */				
 		setrotate( tmtx0, 0 );
@@ -2934,7 +2945,6 @@ STATUS scan( void )
 	float calib_scale;
 	int sweepctr=0;
 	short *phsbuffer;
-	float phscycle = 1.0;
 	float arf1_var = 0;
 
 	fprintf(stderr, "scan(): beginning scan (t = %d / %.0f us)...\n", ttotal, pitscan);
@@ -2975,8 +2985,7 @@ STATUS scan( void )
 		for (echon = 0; echon < opetl+ndisdaqechoes; echon++) {
 			fprintf(stderr, "scan(): playing flip pulse for disdaq train %d (t = %d / %.0f us)...\n", disdaqn, ttotal, pitscan);
 			if (ro_type == 1) {/* FSE - CPMG */
-				ttotal += play_rf1(90 * phscycle);
-				/* phscycle *= -1.0;*/
+				ttotal += play_rf1(90 );
 				}
 			else
 				ttotal += play_rf1(0);
@@ -3133,8 +3142,7 @@ STATUS scan( void )
 				for (echon = 0; echon < ndisdaqechoes; echon++) {
 					fprintf(stderr, "scan(): playing flip pulse for frame %d, shot %d, disdaq echo %d (t = %d / %.0f us)...\n", framen, shotn, echon, ttotal, pitscan);
 					if (ro_type == 1) {/* FSE - CPMG */
-						ttotal += play_rf1(90 * phscycle);
-						/* phscycle *= -1.0; */
+						ttotal += play_rf1(90 );
 					}
 					else
 						ttotal += play_rf1(rfspoil_flag*117*echon);
@@ -3151,10 +3159,9 @@ STATUS scan( void )
 						{
 							arf1_var = a_rf1 + (float)echon*(arf180-a_rf1)/(float)(opetl-1); 
 							setiamp(arf1_var * MAX_PG_WAMP, &rf1,0);
+							fprintf(stderr,"\nadjusting var flip ang: %f (arf180=%f)", arf1_var, arf180 ); 
 						}
-						/* setphase(90*phscycle, &echo1, 0);*/
-						ttotal += play_rf1(90 * phscycle);
-						/* phscycle *= -1.0; */
+						ttotal += play_rf1(90);
 					}
 					else {
 						ttotal += play_rf1(rfspoil_flag*117*(echon + ndisdaqechoes));
