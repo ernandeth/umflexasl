@@ -1023,7 +1023,11 @@ STATUS predownload( void )
 	fprintf(stderr, "predownload(): maximum B1 for rf0 pulse: %f\n", rf0_b1);
 	if (rf0_b1 > maxB1[L_SCAN]) maxB1[L_SCAN] = rf0_b1;
 
-	rf180_b1 = calc_sinc_B1(cyc_rf1, pw_rf1, 180);
+	if (varflip){
+		rf180_b1 = calc_sinc_B1(cyc_rf1, pw_rf1, 180);
+		fprintf(stderr, "predownload(): maximum B1 for a 180 deg pulse: %f\n", rf180_b1);
+		if (rf180_b1 > maxB1[L_SCAN]) maxB1[L_SCAN] = rf180_b1;
+	}
 
 	rf1_b1 = calc_sinc_B1(cyc_rf1, pw_rf1, opflip);
 	fprintf(stderr, "predownload(): maximum B1 for rf1 pulse: %f\n", rf1_b1);
