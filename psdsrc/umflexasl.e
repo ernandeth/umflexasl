@@ -1023,8 +1023,8 @@ STATUS predownload( void )
 	fprintf(stderr, "predownload(): maximum B1 for rf0 pulse: %f\n", rf0_b1);
 	if (rf0_b1 > maxB1[L_SCAN]) maxB1[L_SCAN] = rf0_b1;
 
+	rf180_b1 = calc_sinc_B1(cyc_rf1, pw_rf1, 180);
 	if (varflip){
-		rf180_b1 = calc_sinc_B1(cyc_rf1, pw_rf1, 180);
 		fprintf(stderr, "predownload(): maximum B1 for a 180 deg pulse: %f\n", rf180_b1);
 		if (rf180_b1 > maxB1[L_SCAN]) maxB1[L_SCAN] = rf180_b1;
 	}
@@ -1684,6 +1684,17 @@ STATUS predownload( void )
 	/* For Prescan: Inform 'Auto' Prescan about prescan parameters 	*/
 	pislquant = 10;	/* # of 2nd pass slices */
 
+	/* Set up the filter structures to be downloaded for realtime 
+	   filter generation. Get the slot number of the filter in the filter rack 
+	   and assign to the appropriate acquisition pulse for the right 
+	   filter selection - LxMGD, RJF */
+	setfilter( echo1_filt, SCAN );
+	filter_echo1 = echo1_filt->fslot;
+	entry_point_table[L_SCAN].epxmtadd = (short)rint( (double)xmtaddScan );
+
+	/* LHG : doing the same filters for the prescan */
+	setfilter( echo1_filt, PRESCAN );
+
 	/* For Prescan: Declare the entry point table 	*/
 	if( entrytabinit( entry_point_table, (int)ENTRY_POINT_MAX ) == FAILURE ) 
 	{
@@ -1711,19 +1722,6 @@ STATUS predownload( void )
 	pitslice = optr;
 	pitscan = (nframes*narms*opnshots + ndisdaqtrains) * optr; /* pitscan controls the clock time on the interface */	
 	
-	/* Set up the filter structures to be downloaded for realtime 
-	   filter generation. Get the slot number of the filter in the filter rack 
-	   and assign to the appropriate acquisition pulse for the right 
-	   filter selection - LxMGD, RJF */
-	setfilter( echo1_filt, SCAN );
-	filter_echo1 = echo1_filt->fslot;
-	entry_point_table[L_SCAN].epxmtadd = (short)rint( (double)xmtaddScan );
-
-	/* APS2 & MPS2 */
-	entry_point_table[L_APS2] = entry_point_table[L_MPS2] = entry_point_table[L_SCAN];	/* copy scan into APS2 & MPS2 */
-	(void)strcpy( entry_point_table[L_APS2].epname, "aps2" );
-	(void)strcpy( entry_point_table[L_MPS2].epname, "mps2" );
-
 	/* Set up Tx/Rx frequencies */
 	for (slice = 0; slice < opslquant; slice++) rsp_info[slice].rsprloc = 0;
 	setupslices(rf1_freq, rsp_info, opslquant, a_gzrf1, 1.0, opfov, TYPTRANSMIT);
@@ -2838,22 +2836,54 @@ STATUS play_endscan() {
 	return SUCCESS;
 }
 
-/* function for playing prescan sequence */
+/* function for playing prescan sequence : MOSTLY the same as the scan loop */
 STATUS prescanCore() {
+
+	int ttotal; 
 
 	/* initialize the rotation matrix */
 	setrotate( tmtx0, 0 );
 	
 	for (view = 1 - rspdda; view < rspvus + 1; view++) {
+		ttotal = 0;
+
+		/* play the ASL pre-saturation pulse to reset magnetization */
+		if (presat_flag) {
+			fprintf(stderr, "prescanCore(): playing asl pre-saturation pulse for frame %d, arm %d, shot %d (t = %d / %.0f us)...\n", framen, armn, shotn, ttotal, pitscan);
+			ttotal += play_presat();
+		}
+		/* PCASL pulse after pre-sat pulse */
+		if (pcasl_flag > 0  &&  framen >= nm0frames){
+			fprintf(stderr, "prescanCore(): Playing PCASL pulse for frame %d, shot %d (t = %d / %.0f us)...\n", framen, shotn, ttotal, pitscan);
+			/* ttotal += play_pcasl(pcasl_lbltbl[framen], pcasl_tbgs1tbl[framen], pcasl_tbgs2tbl[framen], pcasl_pldtbl[framen]); * will use this for arbitrary labeling schedules */
+			ttotal += play_pcasl(pcasl_lbltbl[framen], pcasl_tbgs1tbl[framen], pcasl_tbgs2tbl[framen], pcasl_pldtbl[framen]);
+		}
+		/* prep1 (vsasl module) */
+		if (prep1_id > 0 ) {
+			fprintf(stderr, "prescanCore(): playing prep1 pulse for frame %d, shot %d (t = %d / %.0f us)...\n", framen, shotn, ttotal, pitscan);
+			ttotal += play_aslprep(off_prep1ctlcore, off_prep1lblcore, prep1_mod, dur_prep1core, prep1_pld, prep1_tbgs1, prep1_tbgs2, prep1_tbgs3);
+		}
+
+		/* prep2 (vascular crusher module) */
+		if (prep2_id > 0 ) {
+			fprintf(stderr, "prescanCore(): playing prep2 pulse for frame %d, shot %d (t = %d / %.0f us)...\n", framen, shotn, ttotal, pitscan);
+			ttotal += play_aslprep(off_prep2ctlcore, off_prep2lblcore, prep2_mod, dur_prep2core, prep2_pld, prep2_tbgs1, prep2_tbgs2, prep2_tbgs3);
+		}
+
+		/* fat sup pulse */
+		if (fatsup_mode > 0) {
+			fprintf(stderr, "prescanCore(): playing fat sup pulse for frame %d, shot %d (t = %d / %.0f us)...\n", framen, shotn, ttotal, pitscan);
+			ttotal += play_fatsup();
+		}
 
 
 		if (ro_type == 1) { /* FSE - play 90 */
 			fprintf(stderr, "prescanCore(): playing 90deg FSE tipdown for prescan iteration %d...\n", view);
-			play_rf0(0);
+			ttotal += play_rf0(0);
 		}	
 
 		fprintf(stderr, "prescanCore(): Playing flip pulse for prescan iteration %d...\n", view);
-		play_rf1(90*(ro_type == 1));
+		ttotal += play_rf1(90*(ro_type == 1));
 			
 		/* Load the DAB */	
 		/*
@@ -2865,11 +2895,13 @@ STATUS prescanCore() {
 			fprintf(stderr, "prescanCore(): loaddab(&echo1, 0, 0, 0, %d, DABON, PSD_LOAD_DAB_ALL)...\n", view);
 			loaddab(&echo1, 0, 0, 0, view, DABON, PSD_LOAD_DAB_ALL);
 		}*/
+
 		/* kill gradients */				
 		setrotate( zmtx, 0 );
 
-		for (echon=0; echon < opetl; echon++){
-			if (echon==0){ /* use only the data from the first echo*/
+		for (echon=0; echon<opetl; echon++){
+			if (echon==0)
+			{ /* use only the data from the first echo*/
 				fprintf(stderr, "prescanCore(): loaddab(&echo1, 0, 0, 0, %d, DABON, PSD_LOAD_DAB_ALL)...\n", view);
 				loaddab(&echo1, 0, 0, DABSTORE, view, DABON, PSD_LOAD_DAB_ALL);
 			}
@@ -2878,19 +2910,15 @@ STATUS prescanCore() {
 				fprintf(stderr, "prescanCore(): loaddab(&echo1, 0, 0, 0, %d, DABOFF, PSD_LOAD_DAB_ALL)...\n", view);
 				loaddab(&echo1, 0, 0, DABSTORE, view, DABOFF, PSD_LOAD_DAB_ALL);
 			}
-			fprintf(stderr, "prescanCore(): playing readout for prescan iteration %d...\n", view);
-			play_readout();
+			fprintf(stderr, "prescanCore(): playing readout for prescan iteration %d , echo %d...\n", view, echon);
+			ttotal += play_readout();
 		}
 
 		/* restore gradients */				
 		setrotate( tmtx0, 0 );
 
 		fprintf(stderr, "prescanCore(): playing deadtime for prescan iteration %d...\n", view);
-
-		if (ro_type==1)
-			play_deadtime(optr - opetl * (dur_rf1core + TIMESSI + dur_seqcore + TIMESSI) - dur_rf0core);
-		else
-			play_deadtime(optr - opetl * (dur_rf1core + TIMESSI + dur_seqcore + TIMESSI) );
+		play_deadtime(optr - ttotal);
 			
 	}
 
