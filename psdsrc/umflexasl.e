@@ -3,6 +3,8 @@
  * Language  : EPIC/ANSI C
  * Date      : july 31, 2024 
  *
+ * this is velocity spectrum imaging branch
+ *
  * Based on sequence by 
  * David Frey
  * University of Michigan Medicine Department of Radiology
@@ -162,6 +164,9 @@ int nframes = 2 with {1, , 2, VIS, "number of frames",};
 int ndisdaqtrains = 2 with {0, , 2, VIS, "number of disdaq echo trains at beginning of scan loop",};
 int ndisdaqechoes = 0 with {0, , 0, VIS, "number of disdaq echos at beginning of echo train",};
 
+int varflip = 0 with {0,1,0, VIS, "do variable flip angles (FSE case)", };
+float arf180; 
+
 int ro_type = 2 with {1, 3, 2, VIS, "FSE (1), SPGR (2), or bSSFP (3)",};
 int fatsup_mode = 1 with {0, 3, 1, VIS, "none (0), CHESS (1), or SPIR (2)",};
 int fatsup_off = -520 with { , , -520, VIS, "fat suppression pulse frequency offset (Hz)",};
@@ -244,9 +249,10 @@ float	pcasl_distance_adjust; /*cm - distance from the iso-center after table mov
 float	pcasl_RFfreq;
 
 /* adding velocity selectivity shift to the VSI pulses (optional)*/
+int	doVelSpectrum=0;
 float	vel_target = 0.0;
-int		vel_sweep = 0;
-int		vel_sweep_frames = 2;
+int	vel_sweep = 0;
+int	vel_sweep_frames = 2;
 float	vel_target_incr = 0.0;
 int	min_dur_pcaslcore = 0;
 int	zero_CTL_grads = 0; /* option to use zero gradients for the control pulses */
@@ -348,14 +354,14 @@ int init_pcasl_phases(
 		float  myphase_increment, 
 		int nreps);
 
-/* declare prototypes for VSASL spectrum */
-int calc_prep_phs_from_velocity (
+/* int calc_prep_phs_from_velocity (
 	int* prep_pulse_mag, 
 	int* prep_pulse_phs, 
 	int* prep_pulse_grad, 
 	float vel_target, 
 	int vsi_train_len, 
 	double vsi_Gmax);
+*/
 
 @inline Prescan.e PShostVars            /* added with new filter calcs */
 
@@ -941,6 +947,7 @@ STATUS predownload( void )
 	float kzmax;
 	int minesp, minte, absmintr;	
 	float rf0_b1, rf1_b1;
+	float rf180_b1;
 	float rfps1_b1, rfps2_b1, rfps3_b1, rfps4_b1;
 	float rffs_b1, rfbs_b1;
 	float prep1_b1, prep2_b1;
@@ -1016,6 +1023,12 @@ STATUS predownload( void )
 	fprintf(stderr, "predownload(): maximum B1 for rf0 pulse: %f\n", rf0_b1);
 	if (rf0_b1 > maxB1[L_SCAN]) maxB1[L_SCAN] = rf0_b1;
 
+	rf180_b1 = calc_sinc_B1(cyc_rf1, pw_rf1, 180);
+	if (varflip){
+		fprintf(stderr, "predownload(): maximum B1 for a 180 deg pulse: %f\n", rf180_b1);
+		if (rf180_b1 > maxB1[L_SCAN]) maxB1[L_SCAN] = rf180_b1;
+	}
+
 	rf1_b1 = calc_sinc_B1(cyc_rf1, pw_rf1, opflip);
 	fprintf(stderr, "predownload(): maximum B1 for rf1 pulse: %f\n", rf1_b1);
 	if (rf1_b1 > maxB1[L_SCAN]) maxB1[L_SCAN] = rf1_b1;
@@ -1087,7 +1100,10 @@ STATUS predownload( void )
 	/* Update all the rf amplitudes */
 	a_rf0 = rf0_b1 / maxB1Seq;
 	ia_rf0 = a_rf0 * MAX_PG_WAMP;
-	
+
+	/* (this one is for the variable flip angle calculation) */
+	arf180 = rf180_b1 / maxB1Seq;	
+
 	a_rf1 = rf1_b1 / maxB1Seq;
 	ia_rf1 = a_rf1 * MAX_PG_WAMP;
 
@@ -1127,13 +1143,6 @@ STATUS predownload( void )
 	a_prep2gradctl = (prep2_id > 0) ? (prep2_gmax) : (0); 
 	ia_prep2gradctl = (int)ceil(a_prep2gradctl / ZGRAD_max * (float)MAX_PG_WAMP);
 
-	/* Adjust the  phase prep1 VS pulse so that we can do velocity targetting*/
-	if (vel_target > 0.0 )
-	{
-		fprintf(stderr, "calc_seqparms(): calling calc_prep_phs_from_velocity() to adjust the phase on prep 1 \n");
-		calc_prep_phs_from_velocity(prep1_rho_lbl, prep1_theta_lbl, prep1_grad_lbl, vel_target, prep1_len, prep1_gmax);
-	}
-	
 	/* ---------------------------------------------*/
 	/* update the PCASL train specific calculations  */
 	/* ---------------------------------------------*/
@@ -1675,6 +1684,17 @@ STATUS predownload( void )
 	/* For Prescan: Inform 'Auto' Prescan about prescan parameters 	*/
 	pislquant = 10;	/* # of 2nd pass slices */
 
+	/* Set up the filter structures to be downloaded for realtime 
+	   filter generation. Get the slot number of the filter in the filter rack 
+	   and assign to the appropriate acquisition pulse for the right 
+	   filter selection - LxMGD, RJF */
+	setfilter( echo1_filt, SCAN );
+	filter_echo1 = echo1_filt->fslot;
+	entry_point_table[L_SCAN].epxmtadd = (short)rint( (double)xmtaddScan );
+
+	/* LHG : doing the same filters for the prescan */
+	setfilter( echo1_filt, PRESCAN );
+
 	/* For Prescan: Declare the entry point table 	*/
 	if( entrytabinit( entry_point_table, (int)ENTRY_POINT_MAX ) == FAILURE ) 
 	{
@@ -1702,19 +1722,6 @@ STATUS predownload( void )
 	pitslice = optr;
 	pitscan = (nframes*narms*opnshots + ndisdaqtrains) * optr; /* pitscan controls the clock time on the interface */	
 	
-	/* Set up the filter structures to be downloaded for realtime 
-	   filter generation. Get the slot number of the filter in the filter rack 
-	   and assign to the appropriate acquisition pulse for the right 
-	   filter selection - LxMGD, RJF */
-	setfilter( echo1_filt, SCAN );
-	filter_echo1 = echo1_filt->fslot;
-	entry_point_table[L_SCAN].epxmtadd = (short)rint( (double)xmtaddScan );
-
-	/* APS2 & MPS2 */
-	entry_point_table[L_APS2] = entry_point_table[L_MPS2] = entry_point_table[L_SCAN];	/* copy scan into APS2 & MPS2 */
-	(void)strcpy( entry_point_table[L_APS2].epname, "aps2" );
-	(void)strcpy( entry_point_table[L_MPS2].epname, "mps2" );
-
 	/* Set up Tx/Rx frequencies */
 	for (slice = 0; slice < opslquant; slice++) rsp_info[slice].rsprloc = 0;
 	setupslices(rf1_freq, rsp_info, opslquant, a_gzrf1, 1.0, opfov, TYPTRANSMIT);
@@ -1794,12 +1801,24 @@ STATUS predownload( void )
 #include "support_func.h"
 #include "epicfuns.h"
 
+/* waveform pointers for real time updates in the scan loop 
+we use them for updating the phase of the prep pulse in velocity spectrum imaging*/
+WF_HW_WAVEFORM_PTR 	phsbuffer1_wf;
+WF_HW_WAVEFORM_PTR 	phsbuffer2_wf;
+
+
+/* function to reserve memory for a dynamically updated waveform */
+void tp_wreserve(WF_PROCESSOR wfp, WF_HW_WAVEFORM_PTR *wave_addr, int n) 
+{
+    SeqData seqdata;
+    getWaveSeqDataWavegen(&seqdata, wfp, 0, 0, 0, PULSE_CREATE_MODE);
+    *wave_addr = wreserve(seqdata, n);
+}
 
 STATUS pulsegen( void )
 {
 	sspinit(psd_board_type);
 	int tmploc;	
-
 	/*********************************/
 	/* Generate PCASL core */
 	/*********************************/	
@@ -2165,7 +2184,6 @@ STATUS pulsegen( void )
 	SEQLENGTH(emptycore, 1000, emptycore);
 	fprintf(stderr, "\tDone.\n");
 
-
 @inline Prescan.e PSpulsegen
 
 	PASSPACK(endpass, 49ms);   /* tell Signa system we're done */
@@ -2173,6 +2191,13 @@ STATUS pulsegen( void )
 
 	buildinstr();              /* load the sequencer memory       */
 	fprintf(stderr, "\tDone with pulsegen().\n");
+
+	/* reserve memory for waveform buffers in waveform memory (IPG?)
+	for the phase of the prep pulses.
+	use these for dynamic updates of the phase waveforms in the scan loop */
+	tp_wreserve(TYPTHETA, &phsbuffer1_wf, res_prep1thetalbl);
+	tp_wreserve(TYPTHETA, &phsbuffer2_wf, res_prep1thetactl);
+
 
 	return SUCCESS;
 }   /* end pulsegen() */
@@ -2238,6 +2263,10 @@ int seqCount;
  * short, int, long, float, double, and 1D arrays of those types.    *
  *********************************************************************/
 #include <math.h>
+
+/* declare the seqdata object for dynamic updates of waveform using movewaveimmrsp) */
+SeqData	sdTheta1, sdTheta2;
+
 
 /* For IPG Simulator: will generate the entry point list in the IPG tool */
 const CHAR *entry_name_list[ENTRY_POINT_MAX] = {
@@ -2656,7 +2685,7 @@ int play_aslprep(int type, s32* off_ctlcore, s32* off_lblcore, int dur, int tbgs
 	return ttotal;
 }
 
-/* LHG 12/6/12 : compute the linear phase increment of the PCASL pulses */
+/* LHG 12/6/12 : compute the linear phase increment of the PCASL pulses - NOT USED currently*/
 int calc_pcasl_phases(int *iphase_tbl, float  myphase_increment, int nreps)
 {
         int     n;
@@ -2676,6 +2705,57 @@ int calc_pcasl_phases(int *iphase_tbl, float  myphase_increment, int nreps)
 	return 1;
 }               
         
+
+int calc_prep_phs_from_velocity (int* prep_pulse_phs, short* prep_pulse_phs_out, int* prep_pulse_grad, float vel_target, int vsi_train_len, float vsi_Gmax)
+{
+/* This function adds a linear phase shift to the velocity selective pulses
+ in order to shift the velocity selectivity profile to a different velocity */
+
+	/* GAMMA_H1 26754 in (rad/s)/Gauss */
+	float phase_val;
+	float grad_val;
+	float pos=0.0;
+	float dt = 4e-6;
+	float delta_phs = 0.0;
+	int 	i;
+	int	DACMAX = 32766;
+	short	tmp;
+
+	for (i=1; i<vsi_train_len; i++)
+	{
+		/* from DAC units to radians */
+		phase_val = M_PI * (float)(prep_pulse_phs[i]) /  (float)FS_PI  ; 		
+		/* from DAC units to G/cm */
+		grad_val = vsi_Gmax * (float)(prep_pulse_grad[i]) / (float)DACMAX ;
+
+		/* calc the phase gained by moving spins during THIS dt interval */
+		pos += vel_target*dt; 
+		delta_phs += GAMMA * grad_val * pos * dt ;
+
+		/* change the phase of the pulse accordingly */
+		phase_val -=  delta_phs;
+
+		/* from radians to DAC ... unwrap first  , then make them even numbers only. */	
+		phase_val = atan2( sin(phase_val), cos(phase_val));
+		phase_val = phase_val * (float)(FS_PI) / M_PI;
+		tmp = (short)(phase_val);
+
+		/* make sure they are even numbers */
+		prep_pulse_phs_out[i] = 2*(tmp/2);
+	}
+	
+	for (i=0; i<vsi_train_len; i++)
+	{
+		if (prep_pulse_phs[i] == 0) 
+			prep_pulse_phs_out[i] = 0;
+
+	}
+	/* make sure the EOS bit is set at the end, by adding 1 to the last number */
+	prep_pulse_phs_out[vsi_train_len - 1] += 1;
+
+
+	return 1;
+}	
 
 /* function for playing fat sup pulse */
 int play_fatsup() {
@@ -2709,7 +2789,8 @@ int play_rf0(float phs) {
 	return ttotal;	
 }
 
-/* function for playing GRE rf1 pulse */
+/* function for playing GRE rf1 pulse
+in FSE mode, this serves as the refocuser (180) */
 int play_rf1(float phs) {
 	int ttotal = 0;
 
@@ -2755,23 +2836,54 @@ STATUS play_endscan() {
 	return SUCCESS;
 }
 
-/* function for playing prescan sequence */
+/* function for playing prescan sequence : MOSTLY the same as the scan loop */
 STATUS prescanCore() {
+
+	int ttotal; 
 
 	/* initialize the rotation matrix */
 	setrotate( tmtx0, 0 );
 	
 	for (view = 1 - rspdda; view < rspvus + 1; view++) {
+		ttotal = 0;
+
+		/* play the ASL pre-saturation pulse to reset magnetization */
+		if (presat_flag) {
+			fprintf(stderr, "prescanCore(): playing asl pre-saturation pulse for frame %d, arm %d, shot %d (t = %d / %.0f us)...\n", framen, armn, shotn, ttotal, pitscan);
+			ttotal += play_presat();
+		}
+		/* PCASL pulse after pre-sat pulse */
+		if (pcasl_flag > 0  &&  framen >= nm0frames){
+			fprintf(stderr, "prescanCore(): Playing PCASL pulse for frame %d, shot %d (t = %d / %.0f us)...\n", framen, shotn, ttotal, pitscan);
+			/* ttotal += play_pcasl(pcasl_lbltbl[framen], pcasl_tbgs1tbl[framen], pcasl_tbgs2tbl[framen], pcasl_pldtbl[framen]); * will use this for arbitrary labeling schedules */
+			ttotal += play_pcasl(pcasl_lbltbl[framen], pcasl_tbgs1tbl[framen], pcasl_tbgs2tbl[framen], pcasl_pldtbl[framen]);
+		}
+		/* prep1 (vsasl module) */
+		if (prep1_id > 0 ) {
+			fprintf(stderr, "prescanCore(): playing prep1 pulse for frame %d, shot %d (t = %d / %.0f us)...\n", framen, shotn, ttotal, pitscan);
+			ttotal += play_aslprep(off_prep1ctlcore, off_prep1lblcore, prep1_mod, dur_prep1core, prep1_pld, prep1_tbgs1, prep1_tbgs2, prep1_tbgs3);
+		}
+
+		/* prep2 (vascular crusher module) */
+		if (prep2_id > 0 ) {
+			fprintf(stderr, "prescanCore(): playing prep2 pulse for frame %d, shot %d (t = %d / %.0f us)...\n", framen, shotn, ttotal, pitscan);
+			ttotal += play_aslprep(off_prep2ctlcore, off_prep2lblcore, prep2_mod, dur_prep2core, prep2_pld, prep2_tbgs1, prep2_tbgs2, prep2_tbgs3);
+		}
+
+		/* fat sup pulse */
+		if (fatsup_mode > 0) {
+			fprintf(stderr, "prescanCore(): playing fat sup pulse for frame %d, shot %d (t = %d / %.0f us)...\n", framen, shotn, ttotal, pitscan);
+			ttotal += play_fatsup();
+		}
+
 
 		if (ro_type == 1) { /* FSE - play 90 */
 			fprintf(stderr, "prescanCore(): playing 90deg FSE tipdown for prescan iteration %d...\n", view);
-			play_rf0(0);
+			ttotal += play_rf0(0);
 		}	
 
-		fprintf(stderr, "prescanCore(): Playing flip pulse for prescan iteration %d...\n", view);
-		play_rf1(90*(ro_type == 1));
-			
 		/* Load the DAB */	
+		/*
 		if (view < 1 || n < ndisdaqechoes) {
 			fprintf(stderr, "prescanCore(): loaddab(&echo1, 0, 0, 0, 0, DABOFF, PSD_LOAD_DAB_ALL)...\n");
 			loaddab(&echo1, 0, 0, 0, 0, DABOFF, PSD_LOAD_DAB_ALL);
@@ -2779,20 +2891,37 @@ STATUS prescanCore() {
 		else {
 			fprintf(stderr, "prescanCore(): loaddab(&echo1, 0, 0, 0, %d, DABON, PSD_LOAD_DAB_ALL)...\n", view);
 			loaddab(&echo1, 0, 0, 0, view, DABON, PSD_LOAD_DAB_ALL);
-		}
+		}*/
 
 		/* kill gradients */				
-		setrotate( zmtx, 0 );
+		/* setrotate( zmtx, 0 );*/
 
-		fprintf(stderr, "prescanCore(): playing readout for prescan iteration %d...\n", view);
-		play_readout();
+		for (echon=0; echon<opetl; echon++){
+			
+			if (echon<ndisdaqechoes)
+			{ /* use only the data from the first echo*/
+				fprintf(stderr, "prescanCore(): loaddab(&echo1, 0, 0, 0, %d, DABON, PSD_LOAD_DAB_ALL)...\n", view);
+				loaddab(&echo1, 0, 0, DABSTORE, view, DABOFF, PSD_LOAD_DAB_ALL);
+			}
+			else
+			{
+				fprintf(stderr, "prescanCore(): loaddab(&echo1, 0, 0, 0, %d, DABOFF, PSD_LOAD_DAB_ALL)...\n", view);
+				loaddab(&echo1, 0, 0, DABSTORE, view, DABON, PSD_LOAD_DAB_ALL);
+			}
+			
+			fprintf(stderr, "prescanCore(): Playing flip pulse for prescan iteration %d...\n", view);
+			ttotal += play_rf1(90*(ro_type == 1));
+
+			fprintf(stderr, "prescanCore(): playing readout for prescan iteration %d , echo %d...\n", view, echon);
+			ttotal += play_readout();
+		}
 
 		/* restore gradients */				
-		setrotate( tmtx0, 0 );
+		/*setrotate( tmtx0, 0 );*/
 
 		fprintf(stderr, "prescanCore(): playing deadtime for prescan iteration %d...\n", view);
-		play_deadtime(100ms);
-
+		play_deadtime(optr - ttotal);
+			
 	}
 
 	rspexit();
@@ -2848,10 +2977,18 @@ STATUS scan( void )
 	int ttotal = 0;
 	int rotidx;
 	float calib_scale;
-	int ctr=0;
+	int sweepctr=0;
+	short *phsbuffer;
+	float arf1_var = 0;
 
-	fprintf(stderr, "scan(): beginning scan (t = %d / %.0f us)...\n", ttotal, pitscan);	
-	
+	fprintf(stderr, "scan(): beginning scan (t = %d / %.0f us)...\n", ttotal, pitscan);
+
+	/* VELOCITY SPECTRUM IMAGING:
+	generate seqData objects to contain the phase waveform in HW memory 
+	so we can be update the prep pulse phase waveforms inside the scan loop*/
+	getWaveSeqDataWavegen(&sdTheta1, TYPTHETA, 0, 0, 0, PULSE_CREATE_MODE);	
+	getWaveSeqDataWavegen(&sdTheta2, TYPTHETA, 0, 0, 0, PULSE_CREATE_MODE);	
+	phsbuffer = (short*)AllocNode(prep1_len*sizeof(short));
 	
 	/* Play an empty acquisition to reset the DAB after prescan */
 	if (disdaqn == 0) {
@@ -2882,8 +3019,9 @@ STATUS scan( void )
 		/* Loop through echoes */
 		for (echon = 0; echon < opetl+ndisdaqechoes; echon++) {
 			fprintf(stderr, "scan(): playing flip pulse for disdaq train %d (t = %d / %.0f us)...\n", disdaqn, ttotal, pitscan);
-			if (ro_type == 1) /* FSE - CPMG */
-				ttotal += play_rf1(90);
+			if (ro_type == 1) {/* FSE - CPMG */
+				ttotal += play_rf1(90 );
+				}
 			else
 				ttotal += play_rf1(0);
 
@@ -2910,30 +3048,74 @@ STATUS scan( void )
 	}
 
 
-	/* loop through frames and shots */
+	/* loop through frames arms and shots 
+	frames are the number images in the time series
+	shots are the number of kzsteps in stack of spirals, and also the number of echoes in the echo train
+	arms is the spiral z-rotations in SOS, or also the second axis rotation in SERIOS*/
 	for (framen = 0; framen < nframes; framen++) {
+
+		/* If we're doing velocity spectrum imaging, 
+		   we have to sweep through a number of target velocities
+		   incrementing the target velocity every vel_sweep_frames */	
+		if (doVelSpectrum){
+			fprintf(stderr, "\nscan(): velocity spectrum temp counter: %d \n", sweepctr); 
+			if (sweepctr == vel_sweep_frames){
+				sweepctr = 0;
+				vel_target += vel_target_incr;
+				fprintf(stderr, "\n\n scan() velocity spectrum: updating for prep1 pulse for vel %f \n", vel_target);
+			}	
+			sweepctr++ ;
+		}			
+
+		/* Now Adjust the  phase prep1 VS pulse so that we can do velocity targetting*/
+		if (vel_target > 0.0 )
+		{
+			fprintf(stderr, "scan(): calling calc_prep_phs_from_velocity() to adjust the phase on prep 1 \n");
+			
+			/* calculate the new phase waveform for the theta channel */
+			calc_prep_phs_from_velocity(prep1_theta_lbl, phsbuffer, prep1_grad_lbl, vel_target, prep1_len, prep1_gmax);
+			fprintf(stderr, "scan(): ... done \n");
+			/* copy the new phase buffer to the hardware memory buffer*/
+			fprintf(stderr, "scan(): moving the waveform into the wf memoery \n");
+			movewaveimmrsp(sdTheta1, phsbuffer, phsbuffer1_wf, prep1_len, TOHARDWARE);
+			fprintf(stderr, "scan(): ... done \n");
+			/* set the waveform object to point to the memory location we just updated*/
+			fprintf(stderr, "scan(): pointing the prep1 pulse to the new waveform [this seems to kill the scan]]\n");
+			setwave(phsbuffer1_wf, &prep1thetalbl, 0);  
+			fprintf(stderr, "scan(): ... done \n");
+
+
+			/* do the same thing with the control pulse */
+
+			/* calculate the new phase waveform for the theta channel */
+			/* calc_prep_phs_from_velocity(prep1_theta_ctl, phsbuffer, prep1_grad_ctl, vel_target, prep1_len, prep1_gmax);*/
+			/* copy the new phase buffer to the hardware memory buffer*/
+			/* movewaveimmrsp(sdTheta2, phsbuffer, phsbuffer2_wf, prep1_len, TOHARDWARE); */
+			/* set the waveform object to point to the memory location we just updated*/
+			/* setwave(phsbuffer2_wf, &prep2thetactl, 0);*/
+		}
+
+		/* if we want to calibrate the phase correction to correct for off-resonance
+		   we increment the size of the phase steps between pulses.
+		   We will do this every 'pcasl_calib_frames' frames - must be an even number! */
+		if (pcasl_flag	&& pcasl_calib) {
+			nm0frames = 0;
+			phs_cal_step = 2*M_PI/(nframes/pcasl_calib_frames);
+
+			fprintf(stderr, "\nscan(): Phase calibration counter: %d \n", sweepctr); 
+			if (sweepctr == pcasl_calib_frames ){
+				sweepctr = 0;
+				pcasl_delta_phs += phs_cal_step;
+				fprintf(stderr, "\n\n scan() CALIBRATION: updating PCASL linear phase increment: %f (rads) and phase table\n\n", pcasl_delta_phs);
+				/* update the pcasl phase table - NOT USED currently */
+				/* calc_pcasl_phases(pcasl_iphase_tbl, pcasl_delta_phs, MAXPCASLSEGMENTS);*/
+			}
+			sweepctr++;
+		}
+
 		for (armn = 0; armn < narms; armn++) {
+
 			for (shotn = 0; shotn < opnshots; shotn++) {
-
-				if (pcasl_flag	&& pcasl_calib) {
-					/* if we want to calibrate the phase correction to correct for off-resonance
-					   we increment the size of the phase steps between pulses.
-					   We will do this every 'pcasl_calib_frames' frames - must be an even number! */
-					nm0frames = 0;
-					phs_cal_step = 2*M_PI/(nframes/pcasl_calib_frames);
-
-					if (ctr > pcasl_calib_frames-1 ){
-						ctr = 0;
-						pcasl_delta_phs += phs_cal_step;
-						fprintf(stderr, "\n\n scan() CALIBRATION: updating PCASL linear phase increment: %f (rads) and phase table\n\n", pcasl_delta_phs);
-						/* update the pcasl phase table */
-						/*calc_pcasl_phases(pcasl_iphase_tbl, pcasl_delta_phs, MAXPCASLSEGMENTS);*/
-					}
-					ctr++;
-					fprintf(stderr, "\nscan(): Phase calibration counter: %d \n", ctr); 
-				}
-
-
 
 				/* set amplitudes for rf calibration modes */
 				calib_scale = (float)framen / (float)(nframes - 1);
@@ -2994,8 +3176,9 @@ STATUS scan( void )
 				/* play disdaq echoes */
 				for (echon = 0; echon < ndisdaqechoes; echon++) {
 					fprintf(stderr, "scan(): playing flip pulse for frame %d, shot %d, disdaq echo %d (t = %d / %.0f us)...\n", framen, shotn, echon, ttotal, pitscan);
-					if (ro_type == 1) /* FSE - CPMG */
-						ttotal += play_rf1(90);
+					if (ro_type == 1) {/* FSE - CPMG */
+						ttotal += play_rf1(90 );
+					}
 					else
 						ttotal += play_rf1(rfspoil_flag*117*echon);
 
@@ -3003,10 +3186,18 @@ STATUS scan( void )
 					ttotal += play_deadtime(dur_seqcore);
 				}
 
+				/* play the actual echo train */
 				for (echon = 0; echon < opetl; echon++) {
 					fprintf(stderr, "scan(): playing flip pulse for frame %d, shot %d, echo %d (t = %d / %.0f us)...\n", framen, shotn, echon, ttotal, pitscan);
-					if (ro_type == 1) /* FSE - CPMG */
+					if (ro_type == 1){ /* FSE - CPMG */
+						if(varflip)
+						{
+							arf1_var = a_rf1 + (float)echon*(arf180-a_rf1)/(float)(opetl-1); 
+							setiamp(arf1_var * MAX_PG_WAMP, &rf1,0);
+							fprintf(stderr,"\nadjusting var flip ang: %f (arf180=%f)", arf1_var, arf180 ); 
+						}
 						ttotal += play_rf1(90);
+					}
 					else {
 						ttotal += play_rf1(rfspoil_flag*117*(echon + ndisdaqechoes));
 						setphase(rfspoil_flag*117*(echon + ndisdaqechoes), &echo1, 0);
@@ -3042,6 +3233,10 @@ STATUS scan( void )
 			}
 		}
 	}
+
+	FreeNode(phsbuffer);
+	FreeNode(&phsbuffer1_wf);
+	FreeNode(&phsbuffer2_wf);
 
 	fprintf(stderr, "scan(): reached end of scan, sending endpass packet (t = %d / %.0f us)...\n", ttotal, pitscan);
 	play_endscan();
@@ -3444,62 +3639,6 @@ int init_pcasl_phases(int *iphase_tbl, float  myphase_increment, int nreps)
 	return 1;
 }               
         
-
-int calc_prep_phs_from_velocity (int* prep_pulse_mag, int* prep_pulse_phs, int* prep_pulse_grad, float vel_target, int vsi_train_len, double vsi_Gmax)
-{
-/* This function adds a linear phase shift to the velocity selective pulses
- in order to shift the velocity selectivity profile to a different velocity */
-
-	/* GAMMA_H1 26754 in (rad/s)/Gauss */
-	double phase_val;
-	double grad_val;
-	double pos=0.0;
-	double dt = 4e-6;
-	double delta_phs = 0.0;
-	int 	i;
-	int	DACMAX = 32766;
-	int	tmp;
-	double  pulseMax = 0.0;
-
-
-	/* find the segments with 180 degree pulses- assume the 180s have the highest B1 in the train */
-	for (i=0; i<vsi_train_len; i++)
-	{
-		if (pulseMax < prep_pulse_mag[i] ) 
-			pulseMax = prep_pulse_phs[i] ;
-
-	}
-
-
-	for (i=1; i<vsi_train_len; i++)
-	{
-		/* from DAC units to radians */
-		phase_val = M_PI * (double)(prep_pulse_phs[i]) /  (double)FS_PI  ; 		
-		/* from DAC units to G/cm */
-		grad_val = vsi_Gmax * (double)(prep_pulse_grad[i]) / (double)DACMAX ;
-
-		/* calc the phase gained by moving spins during THIS dt interval */
-		pos += vel_target*dt; 
-		delta_phs += GAMMA * grad_val * pos * dt ;
-
-		/* change the phase of the pulse accordingly */
-		phase_val -=  delta_phs;
-
-		/* from radians to DAC ... unwrap first  , then make them even numbers only. */	
-		phase_val = atan2( sin(phase_val), cos(phase_val));
-		tmp = (int)(phase_val / M_PI * FS_PI);
-		prep_pulse_phs[i] = 2*(tmp/2);
-	}
-
-	for (i=0; i<vsi_train_len; i++)
-	{
-		if (prep_pulse_mag[i] == 0) 
-			prep_pulse_phs[i] = 0;
-
-	}
-
-	return 1;
-}	
 
 /*in the absence of MRF schedule files, configure the PCASL label and control schedules , including BGS pulses
 these timings will be in us units*/
