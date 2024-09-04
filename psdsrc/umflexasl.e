@@ -2882,9 +2882,6 @@ STATUS prescanCore() {
 			ttotal += play_rf0(0);
 		}	
 
-		fprintf(stderr, "prescanCore(): Playing flip pulse for prescan iteration %d...\n", view);
-		ttotal += play_rf1(90*(ro_type == 1));
-			
 		/* Load the DAB */	
 		/*
 		if (view < 1 || n < ndisdaqechoes) {
@@ -2897,9 +2894,10 @@ STATUS prescanCore() {
 		}*/
 
 		/* kill gradients */				
-		setrotate( zmtx, 0 );
+		/* setrotate( zmtx, 0 );*/
 
 		for (echon=0; echon<opetl; echon++){
+			
 			if (echon==0)
 			{ /* use only the data from the first echo*/
 				fprintf(stderr, "prescanCore(): loaddab(&echo1, 0, 0, 0, %d, DABON, PSD_LOAD_DAB_ALL)...\n", view);
@@ -2910,12 +2908,16 @@ STATUS prescanCore() {
 				fprintf(stderr, "prescanCore(): loaddab(&echo1, 0, 0, 0, %d, DABOFF, PSD_LOAD_DAB_ALL)...\n", view);
 				loaddab(&echo1, 0, 0, DABSTORE, view, DABOFF, PSD_LOAD_DAB_ALL);
 			}
+			
+			fprintf(stderr, "prescanCore(): Playing flip pulse for prescan iteration %d...\n", view);
+			ttotal += play_rf1(90*(ro_type == 1));
+
 			fprintf(stderr, "prescanCore(): playing readout for prescan iteration %d , echo %d...\n", view, echon);
 			ttotal += play_readout();
 		}
 
 		/* restore gradients */				
-		setrotate( tmtx0, 0 );
+		/*setrotate( tmtx0, 0 );*/
 
 		fprintf(stderr, "prescanCore(): playing deadtime for prescan iteration %d...\n", view);
 		play_deadtime(optr - ttotal);
@@ -2981,7 +2983,8 @@ STATUS scan( void )
 
 	fprintf(stderr, "scan(): beginning scan (t = %d / %.0f us)...\n", ttotal, pitscan);
 
-	/* generate seqData objects to contain the phase waveform in HW memory 
+	/* VELOCITY SPECTRUM IMAGING:
+	generate seqData objects to contain the phase waveform in HW memory 
 	so we can be update the prep pulse phase waveforms inside the scan loop*/
 	getWaveSeqDataWavegen(&sdTheta1, TYPTHETA, 0, 0, 0, PULSE_CREATE_MODE);	
 	getWaveSeqDataWavegen(&sdTheta2, TYPTHETA, 0, 0, 0, PULSE_CREATE_MODE);	
