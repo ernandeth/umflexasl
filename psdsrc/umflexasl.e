@@ -2898,15 +2898,15 @@ STATUS prescanCore() {
 
 		for (echon=0; echon<opetl; echon++){
 			
-			if (echon==0)
+			if (echon<ndisdaqechoes)
 			{ /* use only the data from the first echo*/
 				fprintf(stderr, "prescanCore(): loaddab(&echo1, 0, 0, 0, %d, DABON, PSD_LOAD_DAB_ALL)...\n", view);
-				loaddab(&echo1, 0, 0, DABSTORE, view, DABON, PSD_LOAD_DAB_ALL);
+				loaddab(&echo1, 0, 0, DABSTORE, view, DABOFF, PSD_LOAD_DAB_ALL);
 			}
 			else
 			{
 				fprintf(stderr, "prescanCore(): loaddab(&echo1, 0, 0, 0, %d, DABOFF, PSD_LOAD_DAB_ALL)...\n", view);
-				loaddab(&echo1, 0, 0, DABSTORE, view, DABOFF, PSD_LOAD_DAB_ALL);
+				loaddab(&echo1, 0, 0, DABSTORE, view, DABON, PSD_LOAD_DAB_ALL);
 			}
 			
 			fprintf(stderr, "prescanCore(): Playing flip pulse for prescan iteration %d...\n", view);
