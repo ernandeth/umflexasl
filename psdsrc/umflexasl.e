@@ -3188,14 +3188,33 @@ STATUS scan( void )
 
 				/* play the actual echo train */
 				for (echon = 0; echon < opetl; echon++) {
+					
 					fprintf(stderr, "scan(): playing flip pulse for frame %d, shot %d, echo %d (t = %d / %.0f us)...\n", framen, shotn, echon, ttotal, pitscan);
 					if (ro_type == 1){ /* FSE - CPMG */
-						if(varflip)
-						{
+						
+						/* The default is to use a constant refocuser flip angle*/
+						arf1_var = a_rf1;
+
+						if(varflip) {
+							/* variable flip angle refocuser pulses to get more signal 
+							- linearly increasing schedule */
 							arf1_var = a_rf1 + (float)echon*(arf180-a_rf1)/(float)(opetl-1); 
-							setiamp(arf1_var * MAX_PG_WAMP, &rf1,0);
-							fprintf(stderr,"\nadjusting var flip ang: %f (arf180=%f)", arf1_var, arf180 ); 
 						}
+						if (echon==0){
+							/*using a "stabilizer" for the first of the echoes in the train
+								flip[0] = 90 + (vflip)/2         
+							the rest of them are whatever the refocuser flip angle is: 
+								flip[n] = vflip            
+							eg1: 
+								90x - 150y - 120y - 120y -120y ...
+							eg2: 
+								90x - 180y - 180y - 180y -180y ...  */
+							arf1_var = a_rf0 + a_rf1/2;
+						}
+					
+						setiamp(arf1_var * MAX_PG_WAMP, &rf1,0);
+						fprintf(stderr,"\nadjusting var flip ang: %f (arf180=%f)", arf1_var, arf180 ); 
+					
 						ttotal += play_rf1(90);
 					}
 					else {
