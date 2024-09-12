@@ -40,6 +40,7 @@ function x = recon3dflex(varargin)
     defaults.resfac = 1;
     defaults.ccfac = 1;
     defaults.frames = [];
+    defaults.k0correct = 0;
     
     % parse input parameters
     args = vararg_pair(defaults,varargin);
@@ -49,7 +50,7 @@ function x = recon3dflex(varargin)
     if args.coilwise % rearrange for coil-wise reconstruction of frame 1 (for making SENSE maps)
         kdata = permute(kdata(:,:,1,:),[1,2,4,3]);
     end
-    N = ceil(N*args.resfac); % upsample N
+    N = ceil(N*args.resfac); % upsample N (image matrix size)
     
     % cut off first 50 pts of acquisition (sometimes gets corrupted)
     kdata(1:50,:,:,:) = [];
@@ -78,6 +79,11 @@ function x = recon3dflex(varargin)
         kdata = ir_mri_coil_compress(kdata,'ncoil',ncoils);
     end
     
+    % clean up data 
+    if args.k0correct
+        kdata = aslrec.k0correct(kdata, klocs, args.k0correct);
+    end
+
     % set nufft arguments
     nufft_args = {N, 6*ones(1,3), 2*N, N/2, 'table', 2^10, 'minmax:kb'};
 
@@ -85,9 +91,13 @@ function x = recon3dflex(varargin)
     x = zeros([N(:)',length(args.frames)]);
     
     % calculate a new system operator
+    % (LHG : this scales the k-space trajectory, 
+    % and masks out locations what may go outside the -pi to pi range)
     omega = 2*pi*fov(:)'./N(:)'.*reshape(klocs,[],3);
     omega_msk = vecnorm(omega,2,2) < pi;
     omega = omega(omega_msk,:);
+    
+    % (LHG : this creates the system matrix A as a NUFFT ) 
     A = Gnufft(true(N),[omega,nufft_args]); % NUFFT
     w = aslrec.pipedcf(A,3); % calculate density compensation
     if ncoils > 1 % sensitivity encoding
@@ -99,6 +109,7 @@ function x = recon3dflex(varargin)
         framen = args.frames(i);
 
         % get data for current frame
+        % (LHG: dimensions will be (Ndat*Nshots*Nechoes x Ncoils)
         b = reshape(kdata(:,:,framen,:),[],ncoils);
         b = b(omega_msk,:);
         
