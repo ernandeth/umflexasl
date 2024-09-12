@@ -38,7 +38,7 @@ function [kdata,klocs,N,fov] = read_data(pfile)
     end
     klocs = permute(klocs,[1,3,2]); % klocs = [N x nviews x 3]
     
-    % save N and fov
+    % save matrix size (N) and fov
     N = hdr.image.dim_X * ones(1,3);
     fov = hdr.image.dfov/10 * ones(1,3);
     

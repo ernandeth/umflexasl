@@ -168,6 +168,7 @@ int varflip = 0 with {0,1,0, VIS, "do variable flip angles (FSE case)", };
 float arf180; 
 
 int ro_type = 2 with {1, 3, 2, VIS, "FSE (1), SPGR (2), or bSSFP (3)",};
+float SE_factor = 1.5 with {0.01, 10.0 , 1.5, VIS, "Adjustment for the slice width of the refocuser",};
 int fatsup_mode = 1 with {0, 3, 1, VIS, "none (0), CHESS (1), or SPIR (2)",};
 int fatsup_off = -520 with { , , -520, VIS, "fat suppression pulse frequency offset (Hz)",};
 int fatsup_bw = 440 with { , , 440, VIS, "fat suppression bandwidth (Hz)",};
@@ -179,7 +180,7 @@ int rf1_b1calib = 0 with {0, 1, 0, VIS, "option to sweep B1 amplitudes across fr
 
 int pgbuffertime = 248 with {100, , 248, INVIS, "gradient IPG buffer time (us)",};
 int pcasl_buffertime = 100 with {0, , 248, INVIS, "PCASL core - gradient IPG buffer time (us)",};
-float crushfac = 3.0 with {0, 10, 0, VIS, "crusher amplitude factor (a.k.a. cycles of phase/vox; dk_crush = crushfac*kmax)",};
+float crushfac = 2.0 with {0, 10, 0, VIS, "crusher amplitude factor (a.k.a. cycles of phase/vox; dk_crush = crushfac*kmax)",};
 int kill_grads = 0 with {0, 1, 0, VIS, "option to turn off readout gradients",};
 
 /* Trajectory cvs */
@@ -959,7 +960,12 @@ STATUS predownload( void )
 	/*********************************************************************/
 #include "predownload.in"	/* include 'canned' predownload code */
 	/*********************************************************************/
-	
+
+	if (ro_type != 1){
+		SE_factor=1.0;
+	}
+	fprintf(stderr, "\npredownload(): SE_factor (SE refocuse sl. thick factor)  %f\n", SE_factor);
+
 	/* Read in asl prep pulses */
 	fprintf(stderr, "predownload(): calling readprep() to read in ASL prep 1 pulse\n");
 	if (readprep(prep1_id, &prep1_len,
@@ -1024,7 +1030,7 @@ STATUS predownload( void )
 	if (rf0_b1 > maxB1[L_SCAN]) maxB1[L_SCAN] = rf0_b1;
 
 	rf180_b1 = calc_sinc_B1(cyc_rf1, pw_rf1, 180);
-	if (varflip){
+	if (ro_type==1){
 		fprintf(stderr, "predownload(): maximum B1 for a 180 deg pulse: %f\n", rf180_b1);
 		if (rf180_b1 > maxB1[L_SCAN]) maxB1[L_SCAN] = rf180_b1;
 	}
@@ -2118,7 +2124,7 @@ STATUS pulsegen( void )
 
 	fprintf(stderr, "pulsegen(): generating rf0 (rf0 pulse)...\n");
 	tmploc += pgbuffertime; /* start time for rf0 */
-	SLICESELZ(rf0, tmploc + pw_gzrf0a, 3200, (opslthick + opslspace)*opslquant, 90.0, 2, 1, loggrd);
+	SLICESELZ(rf0, tmploc + pw_gzrf0a, 3200, (opslthick + opslspace) * opslquant * SE_factor , 90.0, 2, 1, loggrd);
 	fprintf(stderr, "\tstart: %dus, ", tmploc);
 	tmploc += pw_gzrf0a + pw_gzrf0 + pw_gzrf0d; /* end time for rf2 pulse */
 	fprintf(stderr, " end: %dus\n", tmploc);
@@ -2156,7 +2162,7 @@ STATUS pulsegen( void )
 
 	fprintf(stderr, "pulsegen(): generating rf1 (rf1 pulse)...\n");
 	tmploc += pgbuffertime; /* start time for rf1 */
-	SLICESELZ(rf1, tmploc + pw_gzrf1a, 3200, (opslthick + opslspace)*opslquant, opflip, 2, 1, loggrd);
+	SLICESELZ(rf1, tmploc + pw_gzrf1a, 3200, (opslthick + opslspace) * opslquant * SE_factor, opflip, 2, 1, loggrd);
 	fprintf(stderr, "\tstart: %dus, ", tmploc);
 	tmploc += pw_gzrf1a + pw_gzrf1 + pw_gzrf1d; /* end time for rf2 pulse */
 	fprintf(stderr, " end: %dus\n", tmploc);
@@ -3209,9 +3215,11 @@ STATUS scan( void )
 								90x - 150y - 120y - 120y -120y ...
 							eg2: 
 								90x - 180y - 180y - 180y -180y ...  */
+
 							arf1_var = a_rf0 + a_rf1/2;
 						}
 					
+						/* set the transmitter gain after the adjustments */
 						setiamp(arf1_var * MAX_PG_WAMP, &rf1,0);
 						fprintf(stderr,"\nadjusting var flip ang: %f (arf180=%f)", arf1_var, arf180 ); 
 					
