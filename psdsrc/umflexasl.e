@@ -253,7 +253,7 @@ float	pcasl_RFfreq;
 int	doVelSpectrum=0;
 float	vel_target = 0.0;
 int	vel_sweep = 0;
-int	vel_sweep_frames = 2;
+int	vspectrum_Navgs = 2;
 float	vel_target_incr = 0.0;
 int	min_dur_pcaslcore = 0;
 int	zero_CTL_grads = 0; /* option to use zero gradients for the control pulses */
@@ -1808,10 +1808,10 @@ STATUS predownload( void )
 #include "epicfuns.h"
 
 /* waveform pointers for real time updates in the scan loop 
-we use them for updating the phase of the prep pulse in velocity spectrum imaging*/
+we use them for updating the phase of the prep pulse in velocity spectrum imaging
+*/
 WF_HW_WAVEFORM_PTR 	phsbuffer1_wf;
 WF_HW_WAVEFORM_PTR 	phsbuffer2_wf;
-
 
 /* function to reserve memory for a dynamically updated waveform */
 void tp_wreserve(WF_PROCESSOR wfp, WF_HW_WAVEFORM_PTR *wave_addr, int n) 
@@ -2000,7 +2000,6 @@ STATUS pulsegen( void )
 	fprintf(stderr, "\ttotal time: %dus (tmploc = %dus)\n", dur_prep1core, tmploc);
 	SEQLENGTH(prep1lblcore, dur_prep1core, prep1lblcore);
 	fprintf(stderr, "\tDone.\n");
-
 
 	/**************************/
 	/* generate prep1ctl core */
@@ -2200,10 +2199,11 @@ STATUS pulsegen( void )
 
 	/* reserve memory for waveform buffers in waveform memory (IPG?)
 	for the phase of the prep pulses.
-	use these for dynamic updates of the phase waveforms in the scan loop */
+	use these for dynamic updates of the phase waveforms in the scan loop
+	
 	tp_wreserve(TYPTHETA, &phsbuffer1_wf, res_prep1thetalbl);
 	tp_wreserve(TYPTHETA, &phsbuffer2_wf, res_prep1thetactl);
-
+	*/	
 
 	return SUCCESS;
 }   /* end pulsegen() */
@@ -2983,7 +2983,7 @@ STATUS scan( void )
 	int ttotal = 0;
 	int rotidx;
 	float calib_scale;
-	int sweepctr=0;
+	int vspectrum_rep=0;
 	short *phsbuffer;
 	float arf1_var = 0;
 
@@ -2994,8 +2994,11 @@ STATUS scan( void )
 	so we can be update the prep pulse phase waveforms inside the scan loop*/
 	getWaveSeqDataWavegen(&sdTheta1, TYPTHETA, 0, 0, 0, PULSE_CREATE_MODE);	
 	getWaveSeqDataWavegen(&sdTheta2, TYPTHETA, 0, 0, 0, PULSE_CREATE_MODE);	
+
 	phsbuffer = (short*)AllocNode(prep1_len*sizeof(short));
-	
+	phsbuffer1_wf = (WF_HW_WAVEFORM_PTR)AllocNode(prep1_len*sizeof(WF_HW_WAVEFORM_PTR));
+
+		
 	/* Play an empty acquisition to reset the DAB after prescan */
 	if (disdaqn == 0) {
 		/* Turn the DABOFF */
@@ -3058,47 +3061,43 @@ STATUS scan( void )
 	frames are the number images in the time series
 	shots are the number of kzsteps in stack of spirals, and also the number of echoes in the echo train
 	arms is the spiral z-rotations in SOS, or also the second axis rotation in SERIOS*/
+
+	
 	for (framen = 0; framen < nframes; framen++) {
 
 		/* If we're doing velocity spectrum imaging, 
 		   we have to sweep through a number of target velocities
-		   incrementing the target velocity every vel_sweep_frames */	
+		   incrementing the target velocity every "vspectrum_Navgs" */	
 		if (doVelSpectrum){
-			fprintf(stderr, "\nscan(): velocity spectrum temp counter: %d \n", sweepctr); 
-			if (sweepctr == vel_sweep_frames){
-				sweepctr = 0;
-				vel_target += vel_target_incr;
-				fprintf(stderr, "\n\n scan() velocity spectrum: updating for prep1 pulse for vel %f \n", vel_target);
-			}	
-			sweepctr++ ;
-		}			
+			fprintf(stderr, "\nscan(): velocity spectrum Avgs. counter: %d \n", vspectrum_rep); 
+			if (vspectrum_rep == vspectrum_Navgs){
 
-		/* Now Adjust the  phase prep1 VS pulse so that we can do velocity targetting*/
-		if (vel_target > 0.0 )
-		{
-			fprintf(stderr, "scan(): calling calc_prep_phs_from_velocity() to adjust the phase on prep 1 \n");
-			
+				fprintf(stderr, "\nscan() velocity spectrum: updating for prep1 pulse for vel %f \n", vel_target);
+				vspectrum_rep = 0;
+				vel_target += vel_target_incr;
+			}	
+			vspectrum_rep++ ;
+
+			/* Now Adjust the  phase prep1 VS pulse so that we can do velocity targetting*/
 			/* calculate the new phase waveform for the theta channel */
+			fprintf(stderr, "scan(): calling calc_prep_phs_from_velocity() to adjust the phase on prep 1 \n");
 			calc_prep_phs_from_velocity(prep1_theta_lbl, phsbuffer, prep1_grad_lbl, vel_target, prep1_len, prep1_gmax);
 			fprintf(stderr, "scan(): ... done \n");
+
 			/* copy the new phase buffer to the hardware memory buffer*/
-			fprintf(stderr, "scan(): moving the waveform into the wf memoery \n");
+			fprintf(stderr, "scan(): moving the waveform into the wf memory \n");
 			movewaveimmrsp(sdTheta1, phsbuffer, phsbuffer1_wf, prep1_len, TOHARDWARE);
 			fprintf(stderr, "scan(): ... done \n");
-			/* set the waveform object to point to the memory location we just updated*/
-			fprintf(stderr, "scan(): pointing the prep1 pulse to the new waveform [this seems to kill the scan]]\n");
+
+			/* set the prep1thetalbl object to point to the waveform memory location we will be updating */
+			/* ...[this seems to kill the scan] */
+			fprintf(stderr, "\nscan(): pointing the prep1 pulse iobject to a dynamic waveform memory location ");
+			fprintf(stderr, "\nscan(): (vel_target= %f vspectrum_rep= %d )", vel_target, vspectrum_rep);
 			setwave(phsbuffer1_wf, &prep1thetalbl, 0);  
-			fprintf(stderr, "scan(): ... done \n");
+			fprintf(stderr, "\nscan(): ... done \n");
 
+			/* do the same thing with the control pulse ? */
 
-			/* do the same thing with the control pulse */
-
-			/* calculate the new phase waveform for the theta channel */
-			/* calc_prep_phs_from_velocity(prep1_theta_ctl, phsbuffer, prep1_grad_ctl, vel_target, prep1_len, prep1_gmax);*/
-			/* copy the new phase buffer to the hardware memory buffer*/
-			/* movewaveimmrsp(sdTheta2, phsbuffer, phsbuffer2_wf, prep1_len, TOHARDWARE); */
-			/* set the waveform object to point to the memory location we just updated*/
-			/* setwave(phsbuffer2_wf, &prep2thetactl, 0);*/
 		}
 
 		/* if we want to calibrate the phase correction to correct for off-resonance
@@ -3108,15 +3107,15 @@ STATUS scan( void )
 			nm0frames = 0;
 			phs_cal_step = 2*M_PI/(nframes/pcasl_calib_frames);
 
-			fprintf(stderr, "\nscan(): Phase calibration counter: %d \n", sweepctr); 
-			if (sweepctr == pcasl_calib_frames ){
-				sweepctr = 0;
+			fprintf(stderr, "\nscan(): Phase calibration counter: %d \n", vspectrum_rep); 
+			if (vspectrum_rep == pcasl_calib_frames ){
+				vspectrum_rep = 0;
 				pcasl_delta_phs += phs_cal_step;
 				fprintf(stderr, "\n\n scan() CALIBRATION: updating PCASL linear phase increment: %f (rads) and phase table\n\n", pcasl_delta_phs);
 				/* update the pcasl phase table - NOT USED currently */
 				/* calc_pcasl_phases(pcasl_iphase_tbl, pcasl_delta_phs, MAXPCASLSEGMENTS);*/
 			}
-			sweepctr++;
+			vspectrum_rep++;
 		}
 
 		for (armn = 0; armn < narms; armn++) {
@@ -3262,8 +3261,6 @@ STATUS scan( void )
 	}
 
 	FreeNode(phsbuffer);
-	FreeNode(&phsbuffer1_wf);
-	FreeNode(&phsbuffer2_wf);
 
 	fprintf(stderr, "scan(): reached end of scan, sending endpass packet (t = %d / %.0f us)...\n", ttotal, pitscan);
 	play_endscan();
