@@ -1809,10 +1809,13 @@ STATUS predownload( void )
 
 /* waveform pointers for real time updates in the scan loop 
 we use them for updating the phase of the prep pulse in velocity spectrum imaging
-*/
+
 WF_HW_WAVEFORM_PTR 	phsbuffer1_wf;
 WF_HW_WAVEFORM_PTR 	phsbuffer2_wf;
 
+int* 	phsbuffer1_wf;
+int* 	phsbuffer2_wf;
+*/
 /* function to reserve memory for a dynamically updated waveform */
 void tp_wreserve(WF_PROCESSOR wfp, WF_HW_WAVEFORM_PTR *wave_addr, int n) 
 {
@@ -2200,10 +2203,11 @@ STATUS pulsegen( void )
 	/* reserve memory for waveform buffers in waveform memory (IPG?)
 	for the phase of the prep pulses.
 	use these for dynamic updates of the phase waveforms in the scan loop
-	
-	tp_wreserve(TYPTHETA, &phsbuffer1_wf, res_prep1thetalbl);
-	tp_wreserve(TYPTHETA, &phsbuffer2_wf, res_prep1thetactl);
 	*/	
+/*
+	tp_wreserve(TYPTHETA, phsbuffer1_wf, res_prep1thetalbl);
+	tp_wreserve(TYPTHETA, phsbuffer2_wf, res_prep1thetactl);
+*/		
 
 	return SUCCESS;
 }   /* end pulsegen() */
@@ -2712,7 +2716,7 @@ int calc_pcasl_phases(int *iphase_tbl, float  myphase_increment, int nreps)
 }               
         
 
-int calc_prep_phs_from_velocity (int* prep_pulse_phs, short* prep_pulse_phs_out, int* prep_pulse_grad, float vel_target, int vsi_train_len, float vsi_Gmax)
+int calc_prep_phs_from_velocity (int* prep_pulse_phs, int* prep_pulse_phs_out, int* prep_pulse_grad, float vel_target, int vsi_train_len, float vsi_Gmax)
 {
 /* This function adds a linear phase shift to the velocity selective pulses
  in order to shift the velocity selectivity profile to a different velocity */
@@ -2725,7 +2729,7 @@ int calc_prep_phs_from_velocity (int* prep_pulse_phs, short* prep_pulse_phs_out,
 	float delta_phs = 0.0;
 	int 	i;
 	int	DACMAX = 32766;
-	short	tmp;
+	int	tmp;
 
 	for (i=1; i<vsi_train_len; i++)
 	{
@@ -2984,7 +2988,10 @@ STATUS scan( void )
 	int rotidx;
 	float calib_scale;
 	int vspectrum_rep=0;
-	short *phsbuffer;
+	int *phsbuffer;
+	short *s_phsbuffer;
+	int i;
+
 	float arf1_var = 0;
 
 	fprintf(stderr, "scan(): beginning scan (t = %d / %.0f us)...\n", ttotal, pitscan);
@@ -2992,13 +2999,15 @@ STATUS scan( void )
 	/* VELOCITY SPECTRUM IMAGING:
 	generate seqData objects to contain the phase waveform in HW memory 
 	so we can be update the prep pulse phase waveforms inside the scan loop*/
+	/*
 	getWaveSeqDataWavegen(&sdTheta1, TYPTHETA, 0, 0, 0, PULSE_CREATE_MODE);	
 	getWaveSeqDataWavegen(&sdTheta2, TYPTHETA, 0, 0, 0, PULSE_CREATE_MODE);	
 
-	phsbuffer = (short*)AllocNode(prep1_len*sizeof(short));
-	phsbuffer1_wf = (WF_HW_WAVEFORM_PTR)AllocNode(prep1_len*sizeof(WF_HW_WAVEFORM_PTR));
+	phsbuffer1_wf = (WF_HW_WAVEFORM_PTR)AllocNode(prep1_len*sizeof(int));
+	*/
+	phsbuffer = (int*)AllocNode(prep1_len*sizeof(int));
+	s_phsbuffer = (short*)AllocNode(prep1_len*sizeof(short));
 
-		
 	/* Play an empty acquisition to reset the DAB after prescan */
 	if (disdaqn == 0) {
 		/* Turn the DABOFF */
@@ -3072,31 +3081,46 @@ STATUS scan( void )
 			fprintf(stderr, "\nscan(): velocity spectrum Avgs. counter: %d \n", vspectrum_rep); 
 			if (vspectrum_rep == vspectrum_Navgs){
 
-				fprintf(stderr, "\nscan() velocity spectrum: updating for prep1 pulse for vel %f \n", vel_target);
+				fprintf(stderr, "\n\nscan() velocity spectrum: updating for prep1 pulse for vel %f \n\n", vel_target);
 				vspectrum_rep = 0;
 				vel_target += vel_target_incr;
 			}	
-			vspectrum_rep++ ;
 
 			/* Now Adjust the  phase prep1 VS pulse so that we can do velocity targetting*/
 			/* calculate the new phase waveform for the theta channel */
 			fprintf(stderr, "scan(): calling calc_prep_phs_from_velocity() to adjust the phase on prep 1 \n");
 			calc_prep_phs_from_velocity(prep1_theta_lbl, phsbuffer, prep1_grad_lbl, vel_target, prep1_len, prep1_gmax);
+			
+			/* convert from ints to shorts*/
+			for(i=0;i<prep1_len; i++)
+				s_phsbuffer[i]=(short)phsbuffer[i];
+
+			fprintf(stderr, "scan(): ... done \n");
+			
+			fprintf(stderr, "scan(): moving the waveform into the wf memory \n");
+			movewaveimm(s_phsbuffer, &prep1thetalbl, (int)0, prep1_len, TOHARDWARE);
 			fprintf(stderr, "scan(): ... done \n");
 
+			
 			/* copy the new phase buffer to the hardware memory buffer*/
+			/*
 			fprintf(stderr, "scan(): moving the waveform into the wf memory \n");
 			movewaveimmrsp(sdTheta1, phsbuffer, phsbuffer1_wf, prep1_len, TOHARDWARE);
 			fprintf(stderr, "scan(): ... done \n");
-
+			*/
+			
 			/* set the prep1thetalbl object to point to the waveform memory location we will be updating */
 			/* ...[this seems to kill the scan] */
+			/*
 			fprintf(stderr, "\nscan(): pointing the prep1 pulse iobject to a dynamic waveform memory location ");
 			fprintf(stderr, "\nscan(): (vel_target= %f vspectrum_rep= %d )", vel_target, vspectrum_rep);
 			setwave(phsbuffer1_wf, &prep1thetalbl, 0);  
 			fprintf(stderr, "\nscan(): ... done \n");
-
+			*/
+			
 			/* do the same thing with the control pulse ? */
+
+			vspectrum_rep++ ;
 
 		}
 
