@@ -3497,7 +3497,7 @@ int genviews() {
 					case 2: /* 3D TGA */
 						/* using the fiboancci sphere formulas */
 						theta = (shotn*opetl +echon)*phi3D_1 *2*M_PI / phi2D; /* polar angle */
-						phi = acos(1 - 2*(shotn*opetl + echon)/(opnshots*optel)); /* azimuthal angle */
+						phi = acos(1 - 2*(shotn*opetl + echon)/(opnshots*opetl)); /* azimuthal angle */
 						
 						/* theta = acos(fmod(echon*phi3D_1, 1.0));  */
 						/* phi = 2.0*M_PI * fmod(echon*phi3D_2, 1.0); */
