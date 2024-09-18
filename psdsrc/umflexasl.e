@@ -3495,8 +3495,11 @@ int genviews() {
 						dz = 0.0;
 						break;
 					case 2: /* 3D TGA */
-						theta = acos(fmod(echon*phi3D_1, 1.0)); /* polar angle */
-						phi = 2.0*M_PI * fmod(echon*phi3D_2, 1.0); /* azimuthal angle */
+						theta = (shotn*opetl +echon)*phi3D_1; /* polar angle */
+						phi = (shotn*opetl + echon)*phi3D_2; /* azimuthal angle */
+						
+						/* theta = acos(fmod(echon*phi3D_1, 1.0));  */
+						/* phi = 2.0*M_PI * fmod(echon*phi3D_2, 1.0); */
 						dz = 0.0;
 						break;
 				}
