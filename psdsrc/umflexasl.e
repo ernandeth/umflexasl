@@ -252,9 +252,8 @@ float	pcasl_RFfreq;
 /* adding velocity selectivity shift to the VSI pulses (optional)*/
 int	doVelSpectrum=0;
 float	vel_target = 0.0;
-int	vel_sweep = 0;
 int	vspectrum_Navgs = 2;
-float	vel_target_incr = 0.0;
+float	vel_target_incr = 1.0;
 int	min_dur_pcaslcore = 0;
 int	zero_CTL_grads = 0; /* option to use zero gradients for the control pulses */
 
