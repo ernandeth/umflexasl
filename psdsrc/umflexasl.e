@@ -1412,10 +1412,9 @@ STATUS predownload( void )
 	}
 		/* multiply original matrix by rotation*/			
 	multmat(3,3,3,R, R0, Rp); /*  Rp = R * R_0 */
-	/* convert Rp to long and apply the new rotation matrix*/
+	/* convert Rp to long and scale the new rotation matrix*/
 	for (i=0; i<9; i++)
 		prep_rotmat[i] = (long)round(MAX_PG_WAMP * Rp[i]);
-
 	scalerotmats(&prep_rotmat, &loggrd, &phygrd, 0, 0);
 	fprintf(stderr, "done\n");
 
@@ -2456,7 +2455,7 @@ int play_aslprep(s32* off_ctlcore, s32* off_lblcore, int mod, int dur, int pld, 
 	settrigger(TRIG_INTERN, 0);
 
 	/* restore rotation matrix */
-	setrotate(rotmat0, 0);
+	setrotate(tmtx0, 0);
 
 	/* play pld and background suppression */
 	if (pld > 0) {
