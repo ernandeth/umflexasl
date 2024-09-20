@@ -107,6 +107,13 @@ int acq_offset = 50;
 /* Declare table of readout gradient transformation matrices */
 long tmtxtbl[MAXNSHOTS*MAXNECHOES][9];
 
+/* rotation matrices for the VS pulses*/	
+float R0[9];
+float R[9]; 
+float Rp[9];
+long rotmat0[9];
+long prep_rotmat[9];
+
 /* Declare ASL prep pulse variables */
 int prep1_len = 5000;
 int prep1_rho_lbl[MAXWAVELEN];
@@ -185,7 +192,7 @@ int kill_grads = 0 with {0, 1, 0, VIS, "option to turn off readout gradients",};
 
 /* Trajectory cvs */
 int nnav = 250 with {0, 1000, 250, VIS, "number of navigator points in spiral",};
-int narms = 1 with {1, 1000, 1, VIS, "number of spiral arms - SOS interleaves/shots",};
+int narms = 1 with {1, 1000, 1, VIS, "number of spiral arms - in SOS, this is interleaves/shots",};
 int spi_mode = 0 with {0, 2, 0, VIS, "SOS (0), TGA (1), or 3DTGA (2)",};
 float kz_acc = 1.0 with {1, 100.0, 1.0, VIS, "kz acceleration (SENSE) factor (for SOS only)",};
 float vds_acc0 = 1.0 with {0.001, 50.0, 1.0, VIS, "spiral center oversampling factor",};
@@ -220,6 +227,9 @@ int prep2_tbgs1 = 0 with {0, , 0, VIS, "ASL prep pulse 2: 1st background suppres
 int prep2_tbgs2 = 0 with {0, , 0, VIS, "ASL prep pulse 2: 2nd background suppression delay (0 = no pulse)",};
 int prep2_tbgs3 = 0 with {0, , 0, VIS, "ASL prep pulse 2: 3rd background suppression delay (0 = no pulse)",};
 int prep2_b1calib = 0 with {0, 1, 0, VIS, "ASL prep pulse 2: option to sweep B1 amplitudes across frames from 0 to nominal B1",};
+
+/* Velocity Selective prep pulse axis*/
+int prep_axis = 0;
 
 /* Declare PCASL variables (cv)*/
 int pcasl_pld 	= 1500*1e3 with {0, , 0, VIS, "PCASL prep  : (ms) post-labeling delay ( includes background suppression)",};
@@ -955,6 +965,7 @@ STATUS predownload( void )
 	float tmp_a, tmp_area;
 	float mom1;
 	int ctr = 0;
+	int i;
 
 	/*********************************************************************/
 #include "predownload.in"	/* include 'canned' predownload code */
@@ -1376,6 +1387,38 @@ STATUS predownload( void )
 		return FAILURE;
 	}
 	scalerotmats(tmtxtbl, &loggrd, &phygrd, opetl*opnshots*narms, 0);
+
+
+	fprintf(stderr, "predownload(): calculating VSASL axis rotation matrices...\n");
+	/* Get original transformation matrix and make a scaled version in 'floats' */
+	getrotate(rotmat0,0);
+	
+    for (i = 0; i < 9; i++) 
+		R0[i] = (float)rotmat0[i] / MAX_PG_WAMP;
+    orthonormalize(R0, 3, 3);
+
+	/* figure out the  right transformation matrix to alter the axis - this core only*/
+	eye(R,3); 
+	switch(prep_axis){
+		case 0:
+			eye(R,3);
+		
+		case 1:
+ 			/* PI/2 rotation of  <0,0,1> about the y axis should land you on the x-axis*/
+			genrotmat('y', M_PI/2.0, R); 
+			
+		case 2:
+			genrotmat('x', M_PI/2.0, R);
+	}
+		/* multiply original matrix by rotation*/			
+	multmat(3,3,3,R, R0, Rp); /*  Rp = R * R_0 */
+	/* convert Rp to long and apply the new rotation matrix*/
+	for (i=0; i<9; i++)
+		prep_rotmat[i] = (long)round(MAX_PG_WAMP * Rp[i]);
+
+	scalerotmats(&prep_rotmat, &loggrd, &phygrd, 0, 0);
+	fprintf(stderr, "done\n");
+
 
 	/* calculate minimum echo time and esp, and corresponding deadtimes */
 	minesp = 0;
@@ -2368,7 +2411,10 @@ int play_aslprep(s32* off_ctlcore, s32* off_lblcore, int mod, int dur, int pld, 
 	int ttotal = 0;
 	int ttmp;
 	int type;
+
 	
+	setrotate(prep_rotmat, 0);
+
 	/* determine current mode */		
 	switch (mod) {
 		case 1: /* label, control... */
@@ -2408,6 +2454,9 @@ int play_aslprep(s32* off_ctlcore, s32* off_lblcore, int mod, int dur, int pld, 
 	ttotal += dur + TIMESSI;
 	startseq(0, MAY_PAUSE);
 	settrigger(TRIG_INTERN, 0);
+
+	/* restore rotation matrix */
+	setrotate(rotmat0, 0);
 
 	/* play pld and background suppression */
 	if (pld > 0) {
@@ -2505,20 +2554,20 @@ int play_pcasl(int type,  int tbgs1, int tbgs2, int pld) {
 
 	switch (type) {
 		case 0: /* control PCASL: loop alternating the sign of the RF pulse. update the phase*/
-			fprintf(stderr, "\tplay_aslprep(): playing PCASL control pulse (%d us)...\n", pcasl_period);
+			fprintf(stderr, "\tplay_pcasl(): playing PCASL control pulse (%d us)...\n", pcasl_period);
 			pcasl_toggle = -1.0;
 			break;
 		case -1: /* no PCASL - keep the gradients but don't play rf */
-			fprintf(stderr, "\tplay_aslprep(): playing PCASL label pulse (%d us)...\n", pcasl_period );
+			fprintf(stderr, "\tplay_pcasl(): playing PCASL label pulse (%d us)...\n", pcasl_period );
 			pcasl_toggle = 0.0;
 			break;
 		case 1: /* label PCASL : loop the PCASL core updating the phse of the RF pulses*/
-			fprintf(stderr, "\tplay_aslprep(): playing PCASL label pulse (%d us)...\n", pcasl_period );
+			fprintf(stderr, "\tplay_pcasl(): playing PCASL label pulse (%d us)...\n", pcasl_period );
 			pcasl_toggle = 1.0;
 			break;
 
 		default: /* invalid */
-			fprintf(stderr, "\tplay_aslprep(): ERROR - invalid type (%d)\n", type);
+			fprintf(stderr, "\tplay_pcasl(): ERROR - invalid type (%d)\n", type);
 			rspexit();
 			return -1;
 	}
@@ -2528,7 +2577,7 @@ int play_pcasl(int type,  int tbgs1, int tbgs2, int pld) {
 		/* set the amplitude of the blips */
 		setiamp((int)(pow(pcasl_toggle,i) * pcasl_RFamp_dac), &rfpcasl, 0);
 
-		/* fprintf(stderr, "\tplay_aslprep(): pulse phase %f (rads)...\n", tmpPHI );*/
+		/* fprintf(stderr, "\tplay_pcasl(): pulse phase %f (rads)...\n", tmpPHI );*/
 		/* set the phase of the blips incrementing phase each time */
 		 
 		/* setphase(tmpPHI, &rfpcasl, 0  );*/
@@ -2545,7 +2594,7 @@ int play_pcasl(int type,  int tbgs1, int tbgs2, int pld) {
 	}
 	ttotal += pcasl_Npulses*(pcasl_period);
 
-	/* Play pld and background suppression - same code as in the play_aslprep() */
+	/* Play pld and background suppression - same code as in the play_pcasl() */
 	if (pld > 0) {
 
 		/* Initialize pld before subtracting out tbgs timing */
@@ -2553,7 +2602,7 @@ int play_pcasl(int type,  int tbgs1, int tbgs2, int pld) {
 
 		if (tbgs1 > 0) {
 			/* Play first background suppression delay/pulse */
-			fprintf(stderr, "\tplay_aslprep(): playing bkg suppression pulse 1 delay (%d us)...\n", tbgs1 + TIMESSI);		
+			fprintf(stderr, "\tplay_pcasl(): playing bkg suppression pulse 1 delay (%d us)...\n", tbgs1 + TIMESSI);		
 			setperiod(tbgs1, &emptycore, 0);
 			ttmp -= (tbgs1 + TIMESSI);
 			boffset(off_emptycore);
@@ -2561,7 +2610,7 @@ int play_pcasl(int type,  int tbgs1, int tbgs2, int pld) {
 			settrigger(TRIG_INTERN, 0);
 			ttotal += tbgs1 + TIMESSI;
 
-			fprintf(stderr, "\tplay_aslprep(): playing bkg suppression pulse 1 (%d us)...\n", dur_bkgsupcore + TIMESSI);
+			fprintf(stderr, "\tplay_pcasl(): playing bkg suppression pulse 1 (%d us)...\n", dur_bkgsupcore + TIMESSI);
 			ttmp -= (dur_bkgsupcore + TIMESSI);
 			boffset(off_bkgsupcore);
 			startseq(0, MAY_PAUSE);
@@ -2571,7 +2620,7 @@ int play_pcasl(int type,  int tbgs1, int tbgs2, int pld) {
 
 		if (tbgs2 > 0) {
 			/* Play second background suppression delay/pulse */
-			fprintf(stderr, "\tplay_aslprep(): playing bkg suppression pulse 2 delay (%d us)...\n", tbgs2 + TIMESSI);		
+			fprintf(stderr, "\tplay_pcasl(): playing bkg suppression pulse 2 delay (%d us)...\n", tbgs2 + TIMESSI);		
 			setperiod(tbgs2, &emptycore, 0);
 			ttmp -= (tbgs2 + TIMESSI);
 			boffset(off_emptycore);
@@ -2579,7 +2628,7 @@ int play_pcasl(int type,  int tbgs1, int tbgs2, int pld) {
 			settrigger(TRIG_INTERN, 0);
 			ttotal += tbgs2 + TIMESSI;
 
-			fprintf(stderr, "\tplay_aslprep(): playing bkg suppression pulse 2 (%d us)...\n", dur_bkgsupcore + TIMESSI);
+			fprintf(stderr, "\tplay_pcasl(): playing bkg suppression pulse 2 (%d us)...\n", dur_bkgsupcore + TIMESSI);
 			ttmp -= (dur_bkgsupcore + TIMESSI);
 			boffset(off_bkgsupcore);
 			startseq(0, MAY_PAUSE);
@@ -2589,12 +2638,12 @@ int play_pcasl(int type,  int tbgs1, int tbgs2, int pld) {
 
 		/* Check that ttmp is non-negative */
 		if (ttmp < 0) {
-			fprintf(stderr, "\tplay_aslprep(): ERROR: invalid pld and background suppression time combination\n");
+			fprintf(stderr, "\tplay_pcasl(): ERROR: invalid pld and background suppression time combination\n");
 			rspexit();
 		}
 
 		/* Play remaining PLD deadtime */
-		fprintf(stderr, "\tplay_aslprep(): playing post-label delay (%d us), total end delay = %d us...\n", pld, ttmp);
+		fprintf(stderr, "\tplay_pcasl(): playing post-label delay (%d us), total end delay = %d us...\n", pld, ttmp);
 		setperiod(ttmp - TIMESSI, &emptycore, 0);
 		boffset(off_emptycore);
 		startseq(0, MAY_PAUSE);
