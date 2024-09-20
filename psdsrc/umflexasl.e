@@ -185,7 +185,7 @@ int kill_grads = 0 with {0, 1, 0, VIS, "option to turn off readout gradients",};
 
 /* Trajectory cvs */
 int nnav = 250 with {0, 1000, 250, VIS, "number of navigator points in spiral",};
-int narms = 1 with {1, 1000, 1, VIS, "number of spiral arms",};
+int narms = 1 with {1, 1000, 1, VIS, "number of spiral arms - SOS interleaves/shots",};
 int spi_mode = 0 with {0, 2, 0, VIS, "SOS (0), TGA (1), or 3DTGA (2)",};
 float kz_acc = 1.0 with {1, 100.0, 1.0, VIS, "kz acceleration (SENSE) factor (for SOS only)",};
 float vds_acc0 = 1.0 with {0.001, 50.0, 1.0, VIS, "spiral center oversampling factor",};
