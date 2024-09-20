@@ -3090,7 +3090,9 @@ STATUS scan( void )
 			/* calculate the new phase waveform for the theta channel */
 			fprintf(stderr, "scan(): calling calc_prep_phs_from_velocity() to adjust the phase on prep 1 \n");
 			calc_prep_phs_from_velocity(prep1_theta_lbl, phsbuffer, prep1_grad_lbl, vel_target, prep1_len, prep1_gmax);
+			fprintf(stderr, "scan(): ... done \n");
 			
+			fprintf(stderr, "scan(): converting data types \n");
 			/* convert from ints to shorts*/
 			for(i=0;i<prep1_len; i++)
 				s_phsbuffer[i]=(short)phsbuffer[i];
@@ -3360,6 +3362,9 @@ int genspiral() {
 
 	/* calculate gradient ramp-down */
 	n_rmp = ceil(fmax(fabs(gx_vds[n_vds - 1]), fabs(gy_vds[n_vds - 1])) / SLEWMAX / dt);
+	/* the ramp down may be too fast - lots of gradient errors.  slowing it down here */
+	n_rmp *=2;
+
 	gx_rmp = (float *)malloc(n_rmp*sizeof(float));
 	gy_rmp = (float *)malloc(n_rmp*sizeof(float));
 	for (n = 0; n < n_rmp; n++) {
@@ -3487,6 +3492,7 @@ int genviews() {
 					case 0: /* SOS */
 						phi = 0.0;
 						theta = 0.0;
+						/* theta = M_PI * (float)shotn / (float)opnshots;*/
 						dz = 2.0/(float)opetl * (center_out_idx(opetl,echon) - 1.0/(float)opnshots*center_out_idx(opnshots,shotn)) - 1.0;
 						break;
 					case 1: /* 2D TGA */
@@ -3496,8 +3502,8 @@ int genviews() {
 						break;
 					case 2: /* 3D TGA */
 						/* using the fiboancci sphere formulas */
-						theta = (shotn*opetl +echon)*phi3D_1 *2*M_PI / phi2D; /* polar angle */
-						phi = acos(1 - 2*(shotn*opetl + echon)/(opnshots*opetl)); /* azimuthal angle */
+						theta = (float)(shotn*opetl +echon)*phi3D_1 *2*M_PI / phi2D; /* polar angle */
+						phi = acos(1 - 2*(float)(shotn*opetl + echon)/(float)(opnshots*opetl)); /* azimuthal angle */
 						
 						/* theta = acos(fmod(echon*phi3D_1, 1.0));  */
 						/* phi = 2.0*M_PI * fmod(echon*phi3D_2, 1.0); */
