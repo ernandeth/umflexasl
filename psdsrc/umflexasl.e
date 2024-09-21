@@ -1388,33 +1388,36 @@ STATUS predownload( void )
 	}
 	scalerotmats(tmtxtbl, &loggrd, &phygrd, opetl*opnshots*narms, 0);
 
-
+	/* Generate prep pulse axis transformation matrix*/
 	fprintf(stderr, "predownload(): calculating VSASL axis rotation matrices...\n");
-	/* Get original transformation matrix and make a scaled version in 'floats' */
-	getrotate(rotmat0,0);
 	
     for (i = 0; i < 9; i++) 
-		R0[i] = (float)rotmat0[i] / MAX_PG_WAMP;
-    orthonormalize(R0, 3, 3);
+		R0[i] = (float)rsprot[0][i] / MAX_PG_WAMP;
+    
+	orthonormalize(R0, 3, 3);
 
 	/* figure out the  right transformation matrix to alter the axis - this core only*/
 	eye(R,3); 
 	switch(prep_axis){
 		case 0:
 			eye(R,3);
-		
+			break;
 		case 1:
  			/* PI/2 rotation of  <0,0,1> about the y axis should land you on the x-axis*/
 			genrotmat('y', M_PI/2.0, R); 
-			
+			break;
 		case 2:
 			genrotmat('x', M_PI/2.0, R);
-	}
-		/* multiply original matrix by rotation*/			
+			break;
+	}	
+
+	/* multiply original matrix by rotation*/			
 	multmat(3,3,3,R, R0, Rp); /*  Rp = R * R_0 */
 	/* convert Rp to long and scale the new rotation matrix*/
-	for (i=0; i<9; i++)
+	for (i=0; i<9; i++){
 		prep_rotmat[i] = (long)round(MAX_PG_WAMP * Rp[i]);
+		fprintf(stderr, "\t%0.2f ", Rp[i]);
+	}
 	scalerotmats(&prep_rotmat, &loggrd, &phygrd, 0, 0);
 	fprintf(stderr, "done\n");
 
