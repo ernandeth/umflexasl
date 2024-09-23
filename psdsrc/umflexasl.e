@@ -3395,16 +3395,16 @@ int genspiral() {
 	float kxn, kyn;
 	
 	/* calculate FOV coefficients */
-	/* these calculations are a bit suspect ...*/
+	/* these calculations are a bit suspect 
 	F0 = 1.1*(1.0/vds_acc1 / (float)narms * (float)opfov / 10.0);
 	F1 = 1.1*(2*pow((float)opfov/10.0,2)/opxres *(1.0/vds_acc1 - 1.0/vds_acc0)/(float)narms);
 	F2 = 0;
-	
-	/* trying something simpler*/
+	...*/
+	/* LHG: the above code doesn't work quite right.... trying something simpler */
 	F0 = vds_acc0 * (float)opfov/10.0 / (float)narms ;
 	F1 =(vds_acc1 * (float)opfov/10.0 / (float)narms - F0) / kxymax  ; 
 	F2 = 0;
-
+	
 	if (ro_type == 1) { /* FSE and bSSFP - spiral in-out */
 		F0 /= 2;
 		F1 /= 2;
