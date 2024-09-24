@@ -194,7 +194,8 @@ int kill_grads = 0 with {0, 1, 0, VIS, "option to turn off readout gradients",};
 /* Trajectory cvs */
 int nnav = 250 with {0, 1000, 250, VIS, "number of navigator points in spiral",};
 int narms = 1 with {1, 1000, 1, VIS, "number of spiral arms - in SOS, this is interleaves/shots",};
-int spi_mode = 0 with {0, 3, 0, VIS, "SOS (0), TGA (1), 3DTGA (2), From File (3)",};
+int spi_mode = 0 with {0, 4, 0, VIS, "SOS (0), TGA (1), 3DTGA (2) rotmats from File (3) traj AND rotmats from file (4)",};
+int grad_id = 0;
 float kz_acc = 1.0 with {1, 100.0, 1.0, VIS, "kz acceleration (SENSE) factor (for SOS only)",};
 float vds_acc0 = 1.0 with {0.001, 50.0, 1.0, VIS, "spiral center oversampling factor",};
 float vds_acc1 = 1.0 with {0.001, 50.0, 1.0, VIS, "spiral edge oversampling factor",};
@@ -352,6 +353,7 @@ int readprep(int id, int *len,
 float calc_sinc_B1(float cyc_rf, int pw_rf, float flip_rf);
 float calc_hard_B1(int pw_rf, float flip_rf);
 int write_scan_info();
+int readGrads(int id);
 
 /* declare function prototypes for PCASL functions */ 
 int make_pcasl_schedule(
@@ -616,7 +618,7 @@ STATUS cveval( void )
 
 	if (kill_grads == 0) /* only if spirals are on */
 		piuset += use10;
-	cvdesc(opuser10, "SPI mode: (0) SOS, (1) 2DTGA, (2) 3DTGA");
+	cvdesc(opuser10, "SPI mode: (0) SOS, (1) 2DTGA, (2) 3DTGA, (3)use myrotmats.txt file (4) use both myrotmats and grad files");
 	cvdef(opuser10, 0);
 	opuser10 = spi_mode;
 	cvmin(opuser10, 0);
@@ -1367,11 +1369,21 @@ STATUS predownload( void )
 	a_gzfc = -tmp_a;
 	
 	/* generate initial spiral trajectory */
-	fprintf(stderr, "predownload(): calculating spiral gradients...\n");
-	if (genspiral() == 0) {
-		epic_error(use_ermes,"failure to generate spiral waveform", EM_PSD_SUPPORT_FAILURE, EE_ARGS(0));
-		return FAILURE;
+	if (spi_mode==4){
+		fprintf(stderr, "predownload(): reading external spiral gradients...\n");
+		if (readGrads(grad_id)==0){
+			epic_error(use_ermes,"failure to read external spiral waveform", EM_PSD_SUPPORT_FAILURE, EE_ARGS(0));
+			return FAILURE;	
+		}
 	}
+	else{
+		fprintf(stderr, "predownload(): calculating spiral gradients...\n");
+		if (genspiral() == 0) {
+			epic_error(use_ermes,"failure to generate spiral waveform", EM_PSD_SUPPORT_FAILURE, EE_ARGS(0));
+			return FAILURE;
+		}
+	}
+	
 	a_gxw = XGRAD_max;
 	a_gyw = YGRAD_max;
 	ia_gxw = MAX_PG_WAMP;
@@ -3518,6 +3530,86 @@ int genspiral() {
 	return SUCCESS;
 }
 
+/* Function to read external waveform file for the gradients.  use G/cm */
+int readGrads(int id)
+{
+	/* Declare variables */
+	char fname[80];
+	FILE *fID;
+	char buff[200];
+	int n;
+	double gxval, gyval;
+
+	float gx[MAXWAVELEN];
+	float gy[MAXWAVELEN];
+		
+	float dt = GRAD_UPDATE_TIME*1e-6; /* raster time (s) */
+	float gam = 4258; /* gyromagnetic ratio (Hz/G) */
+
+	if (id == 0) {
+		/* Set all values to zero and return */
+		for (n = 0; n < MAXWAVELEN; n++) {
+			gx[n] = 0;
+			gy[n] = 0;
+		}
+		fprintf(stderr, "readGrads(): aborted %s\n", fname);
+		return 1;
+	}
+
+	/* Read in RF magnitude from rho file */
+	sprintf(fname, "RO_grads/%05d/grads.txt", id);
+	fprintf(stderr, "readGrads(): opening %s...\n", fname);
+	fID = fopen(fname, "r");
+
+	/* Check if rho file was opened successfully */
+	if (fID == 0) {
+		fprintf(stderr, "readGrads(): failure opening %s\n", fname);
+		return 0;
+	}
+
+	/* Loop through points in rho file */
+	n = 0;
+	while (fgets(buff, 200, fID)) {
+		
+		sscanf(buff, "%lf %lf", &gxval, &gyval);
+		gx[n] = gxval;
+		gy[n] = gyval;
+
+		/* convert gradients to integer units */
+		Gx[n] = 2*round(MAX_PG_WAMP/XGRAD_max * gx[n] / 2.0);
+		Gy[n] = 2*round(MAX_PG_WAMP/YGRAD_max * gy[n] / 2.0);
+
+		n++;
+	}
+	fclose(fID);
+
+	grad_len = n;
+
+	
+	/* integrate gradients to calculate kspace and write to file */
+	float kxn = 0.0;
+	float kyn = 0.0;
+	FILE *fID_ktraj = fopen("ktraj.txt", "w");
+	FILE *fID_ktraj_all = fopen("ktraj_all.txt", "w");
+
+	for (n = 0; n < grad_len; n++) {
+		/* integrate gradients */
+		kxn += gam * gx[n] * dt;
+		kyn += gam * gy[n] * dt;
+	
+		fprintf(fID_ktraj, "%f \t%f \t0.0\n", kxn, kyn);
+		fprintf(fID_ktraj_all, "%f \t%f \t0.0\n", kxn, kyn);
+	
+	}
+
+	fclose(fID_ktraj);
+	fclose(fID_ktraj_all);
+
+	return 1;
+}
+
+
+
 int genviews() {
 
 	/* Declare values and matrices */
@@ -3527,18 +3619,18 @@ int genviews() {
 	float Rz[9], Rtheta[9], Rphi[9], Tz[9];
 	float T_0[9], T[9];
 
-	fprintf(stderr, "genviews()\n");
-
 	FILE* pRotFile;
+	char fname[80];
 	int matnum = 0;
 	char textline[256];
 	float element; 
 		
 	fprintf(stderr, "genviews...():\n");
 
-	if (spi_mode==3){
+	if (spi_mode>=3){
 	/* external file with rotations*/
-		pRotFile=fopen("myrotmats.txt", "r'");
+		sprintf(fname, "RO_grads/%05d/myrotmats.txt", grad_id);
+		pRotFile=fopen(fname,  "r");
 		fprintf(stderr, "genviews(): reading myrotmats.txt\n");
 
 		/* Check if rotation mats  file was read successfully */
@@ -3553,7 +3645,7 @@ int genviews() {
 			for(n=0; n<9; n++) {
 				sscanf(textline, "%f", &element);
 				Tex[matnum][n] = element;
-				fprintf(stderr, "\t%0.2f", element);
+				/* fprintf(stderr, "\t%0.2f", element);*/
 			}	
 			matnum++;
 		}
@@ -3603,9 +3695,7 @@ int genviews() {
 						/* phi = 2.0*M_PI * fmod(echon*phi3D_2, 1.0); */
 						dz = 0.0;
 						break;
-					case 3: 
-							
-						break;
+					
 				}
 
 				/* Calculate the transformation matrices */
@@ -3622,7 +3712,7 @@ int genviews() {
 
 				/* if the rotations are external we re-calculate 
 				the transformation using the values from the file instead*/
-				if (spi_mode==3){
+				if (spi_mode>=3){
 					multmat(3,3,3,Tex[shotn*opetl + echon],T_0,T);
 				}
 
@@ -3746,6 +3836,8 @@ int readprep(int id, int *len,
 
 	return 1;
 }
+
+
 
 float calc_sinc_B1(float cyc_rf, int pw_rf, float flip_rf) {
 
@@ -3885,6 +3977,12 @@ int write_scan_info() {
 				break;
 			case 2: /* 3DTGA */
 				fprintf(finfo, "\t%-50s%20s\n", "Projection mode:", "3DTGA");
+				break;
+			case 3: /* arbitrary rotations from file */
+				fprintf(finfo, "\t%-50s%20s\n", "Projection mode:", "rotations from file");
+				break;
+			case 4: /* arbitrary rotations and trajectory from file */
+				fprintf(finfo, "\t%-50s%10s\n", "Projection mode:", "gradients + rotations from file");
 				break;
 		}
 		fprintf(finfo, "\t%-50s%20f\n", "VDS center acceleration factor:", vds_acc0);
