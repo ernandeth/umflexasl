@@ -106,6 +106,7 @@ int acq_offset = 50;
 
 /* Declare table of readout gradient transformation matrices */
 long tmtxtbl[MAXNSHOTS*MAXNECHOES][9];
+float Tex[MAXNSHOTS*MAXNECHOES][9];
 
 /* rotation matrices for the VS pulses*/	
 float R0[9];
@@ -193,7 +194,7 @@ int kill_grads = 0 with {0, 1, 0, VIS, "option to turn off readout gradients",};
 /* Trajectory cvs */
 int nnav = 250 with {0, 1000, 250, VIS, "number of navigator points in spiral",};
 int narms = 1 with {1, 1000, 1, VIS, "number of spiral arms - in SOS, this is interleaves/shots",};
-int spi_mode = 0 with {0, 2, 0, VIS, "SOS (0), TGA (1), or 3DTGA (2)",};
+int spi_mode = 0 with {0, 3, 0, VIS, "SOS (0), TGA (1), 3DTGA (2), From File (3)",};
 float kz_acc = 1.0 with {1, 100.0, 1.0, VIS, "kz acceleration (SENSE) factor (for SOS only)",};
 float vds_acc0 = 1.0 with {0.001, 50.0, 1.0, VIS, "spiral center oversampling factor",};
 float vds_acc1 = 1.0 with {0.001, 50.0, 1.0, VIS, "spiral edge oversampling factor",};
@@ -316,8 +317,8 @@ float echo1bw = 16 with {,,,INVIS,"Echo1 filter bw.in KHz",};
 @inline loadrheader.e rheaderhost
 
 /** Load PSD Header **/
-abstract("umvsasl sequence");
-psdname("umvsasl");
+abstract("umflexasl sequence");
+psdname("umflexasl");
 
 int num_conc_grad = 3;          /* always three for grass 	*/
 int entry;
@@ -619,7 +620,7 @@ STATUS cveval( void )
 	cvdef(opuser10, 0);
 	opuser10 = spi_mode;
 	cvmin(opuser10, 0);
-	cvmax(opuser10, 2);	
+	cvmax(opuser10, 3);	
 	spi_mode = opuser10;
 	
 	if (kill_grads == 0 && spi_mode == 0) /* only if spirals are on & SOS*/
@@ -1381,7 +1382,7 @@ STATUS predownload( void )
 	pw_gyw = GRAD_UPDATE_TIME*res_gyw;
 	
 	/* Generate view transformations */
-	fprintf(stderr, "predownload(): calculating views (transformation matrices)...\n");
+	fprintf(stderr, "predownload(): calculating views (ie-transformation matrices)...\n");
 	if (genviews() == 0) {
 		epic_error(use_ermes,"failure to generate view transformation matrices", EM_PSD_SUPPORT_FAILURE, EE_ARGS(0));
 		return FAILURE;
@@ -3400,7 +3401,8 @@ int genspiral() {
 	F1 = 1.1*(2*pow((float)opfov/10.0,2)/opxres *(1.0/vds_acc1 - 1.0/vds_acc0)/(float)narms);
 	F2 = 0;
 	...*/
-	/* LHG: the above code doesn't work quite right.... trying something simpler */
+	/* LHG: the above code doesn't work quite right - looking at trajectories in WTools
+	.... trying something simpler */
 	F0 = vds_acc0 * (float)opfov/10.0 / (float)narms ;
 	F1 =(vds_acc1 * (float)opfov/10.0 / (float)narms - F0) / kxymax  ; 
 	F2 = 0;
@@ -3525,6 +3527,39 @@ int genviews() {
 	float Rz[9], Rtheta[9], Rphi[9], Tz[9];
 	float T_0[9], T[9];
 
+	fprintf(stderr, "genviews()\n");
+
+	FILE* pRotFile;
+	int matnum = 0;
+	char textline[256];
+	float element; 
+		
+	fprintf(stderr, "genviews...():\n");
+
+	if (spi_mode==3){
+	/* external file with rotations*/
+		pRotFile=fopen("myrotmats.txt", "r'");
+		fprintf(stderr, "genviews(): reading myrotmats.txt\n");
+
+		/* Check if rotation mats  file was read successfully */
+		if (pRotFile == 0) {
+			fprintf(stderr, "genviews(): failure opening myrotmats.txt\n");
+			return 0;
+		}
+
+		/* Loop through the text lines in  file */
+		while (fgets(textline, sizeof(textline), pRotFile)) {
+			/* each row is a matrix*/
+			for(n=0; n<9; n++) {
+				sscanf(textline, "%f", &element);
+				Tex[matnum][n] = element;
+				fprintf(stderr, "\t%0.2f", element);
+			}	
+			matnum++;
+		}
+		fclose(pRotFile);
+	}
+
 	/* Initialize z translation to identity matrix */
 	eye(Tz, 3);
 
@@ -3568,6 +3603,9 @@ int genviews() {
 						/* phi = 2.0*M_PI * fmod(echon*phi3D_2, 1.0); */
 						dz = 0.0;
 						break;
+					case 3: 
+							
+						break;
 				}
 
 				/* Calculate the transformation matrices */
@@ -3581,6 +3619,12 @@ int genviews() {
 				multmat(3,3,3,Rz,T,T); /* z rotation (arm-to-arm) T = Rz * T */
 				multmat(3,3,3,Rtheta,T,T); /* polar angle rotation T = Rtheta * T */
 				multmat(3,3,3,Rphi,T,T); /* azimuthal angle rotation T = Rphi * T */
+
+				/* if the rotations are external we re-calculate 
+				the transformation using the values from the file instead*/
+				if (spi_mode==3){
+					multmat(3,3,3,Tex[shotn*opetl + echon],T_0,T);
+				}
 
 				/* Save the matrix to the table of matrices */
 				fprintf(fID_kviews, "%d \t%d \t%d \t%f \t%f \t", armn, shotn, echon, rz, dz);	
