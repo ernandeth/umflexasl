@@ -3598,7 +3598,10 @@ int genviews() {
 						/* using the fiboancci sphere formulas */
 						theta = (float)(shotn*opetl +echon)*phi3D_1 *2*M_PI / phi2D; /* polar angle */
 						phi = acos(1 - 2*(float)(shotn*opetl + echon)/(float)(opnshots*opetl)); /* azimuthal angle */
-						
+						if (mrf_mode){
+							theta += prev_theta;
+							phi += prev_phi;
+						}
 						/* theta = acos(fmod(echon*phi3D_1, 1.0));  */
 						/* phi = 2.0*M_PI * fmod(echon*phi3D_2, 1.0); */
 						dz = 0.0;
