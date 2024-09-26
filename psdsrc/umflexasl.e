@@ -195,7 +195,8 @@ int kill_grads = 0 with {0, 1, 0, VIS, "option to turn off readout gradients",};
 int nnav = 250 with {0, 1000, 250, VIS, "number of navigator points in spiral",};
 int narms = 1 with {1, 1000, 1, VIS, "number of spiral arms - in SOS, this is interleaves/shots",};
 int spi_mode = 0 with {0, 4, 0, VIS, "SOS (0), TGA (1), 3DTGA (2) rotmats from File (3) traj AND rotmats from file (4)",};
-int grad_id = 111;
+int grad_id = 13; /* file ID for arbitrary gradients and rotation matrices*/
+float grad_scale = 1.0;  /* scaling factor for the arbitrary gradients - for safety and troubleshooting*/
 float kz_acc = 1.0 with {1, 100.0, 1.0, VIS, "kz acceleration (SENSE) factor (for SOS only)",};
 float vds_acc0 = 1.0 with {0.001, 50.0, 1.0, VIS, "spiral center oversampling factor",};
 float vds_acc1 = 1.0 with {0.001, 50.0, 1.0, VIS, "spiral edge oversampling factor",};
@@ -353,7 +354,7 @@ int readprep(int id, int *len,
 float calc_sinc_B1(float cyc_rf, int pw_rf, float flip_rf);
 float calc_hard_B1(int pw_rf, float flip_rf);
 int write_scan_info();
-int readGrads(int id);
+int readGrads(int id, float scale);
 
 /* declare function prototypes for PCASL functions */ 
 int make_pcasl_schedule(
@@ -1371,7 +1372,7 @@ STATUS predownload( void )
 	/* generate initial spiral trajectory */
 	if (spi_mode==4){
 		fprintf(stderr, "predownload(): reading external spiral gradients...\n");
-		if (readGrads(grad_id)==0){
+		if (readGrads(grad_id, grad_scale)==0){
 			epic_error(use_ermes,"failure to read external spiral waveform", EM_PSD_SUPPORT_FAILURE, EE_ARGS(0));
 			return FAILURE;	
 		}
@@ -3531,7 +3532,7 @@ int genspiral() {
 }
 
 /* Function to read external waveform file for the gradients.  use G/cm */
-int readGrads(int id)
+int readGrads(int id, float scale)
 {
 	/* Declare variables */
 	char fname[80];
@@ -3572,8 +3573,8 @@ int readGrads(int id)
 	while (fgets(buff, 200, fID)) {
 		
 		sscanf(buff, "%lf %lf", &gxval, &gyval);
-		gx[n] = gxval;
-		gy[n] = gyval;
+		gx[n] = gxval * scale;
+		gy[n] = gyval * scale;
 
 		/* convert gradients to integer units */
 		Gx[n] = 2*round(MAX_PG_WAMP/XGRAD_max * gx[n] / 2.0);
