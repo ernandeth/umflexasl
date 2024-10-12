@@ -27,6 +27,11 @@ function x = recon3dflex(varargin)
 %       to 1/4 of the channels)
 %   - frames: frame indicies to reconstruct (default is all frames,
 %       reconned sequentially)
+%   - k0correct: scale each of the FIDs (views) according to the mean signal
+%               in the navigator segment (redundant points collected in the center of k space)
+%               0: default is to do nothing.
+%               1: use the complex mean of the navigator segment
+%               2: use only the phase of the segments.
 %
 
     % check that mirt is set up
@@ -62,6 +67,11 @@ function x = recon3dflex(varargin)
     if isempty(args.frames)
         args.frames = 1:nframes; % default - use all frames
     end
+
+    % clean up data 
+    if args.k0correct
+        kdata = aslrec.k0correct(kdata, klocs, args.k0correct);
+    end
     
     % do coil compression
     if isempty(args.smap) && (ncoils > 1)
@@ -79,10 +89,6 @@ function x = recon3dflex(varargin)
         kdata = ir_mri_coil_compress(kdata,'ncoil',ncoils);
     end
     
-    % clean up data 
-    if args.k0correct
-        kdata = aslrec.k0correct(kdata, klocs, args.k0correct);
-    end
 
     % set nufft arguments
     nufft_args = {N, 6*ones(1,3), 2*N, N/2, 'table', 2^10, 'minmax:kb'};
