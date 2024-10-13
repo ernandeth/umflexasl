@@ -1,5 +1,15 @@
-function [kdata,klocs,N,fov] = read_data(pfile)
-% Function to read in the pfile and .txt file data and format it for recon
+function [kdata,klocs,N,fov] = read_data(pfile, mrf_mode)
+% function [kdata,klocs,N,fov] = read_data(pfile, mrf_mode)
+% 
+% Function to read in the pfile and suppporting .txt files 
+% ktraj*.txt and kviews*.txt  
+% Function formats raw data and kspace locations for recon
+%
+% pfile:  name of the pfile containing the raw data
+% mrf_mode: binary flag.  1 means that we the rotation matrices will change from
+%       frame to frame.  In that case, there will be different klocs for every
+%       frame in the time series.
+%
 
     if nargin < 1 || isempty(pfile)
         pfile = './P*.7'; % default: use first Pfile on current path
@@ -29,7 +39,12 @@ function [kdata,klocs,N,fov] = read_data(pfile)
     tmp = dir([pdir,'/kviews*.txt']);
     kviewsfile = tmp(1).name;
     kviews = load(kviewsfile);
-    
+ 
+     % make modifications to the sizes if we're in MRF mode.
+    if (mrf_mode==1)
+        nviews = size(kviews,1);
+    end
+
     % transform kspace locations using rotation matrices
     klocs = zeros(size(klocs0,1),3,nviews); % klocs = [N x 3 x nviews]
     for viewn = 1:nviews
