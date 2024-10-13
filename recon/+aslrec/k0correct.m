@@ -25,7 +25,7 @@ k0inds = find(R==0);
 
 if length(k0inds) < 10
     fprintf('WARNING:less than 10 navigator points. Skipping the correction ');
-    return(kdata)
+    %return 
 end
 
 
@@ -58,3 +58,5 @@ for c=1:Ncoils
         end
     end
 end
+
+return

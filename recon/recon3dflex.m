@@ -32,6 +32,8 @@ function x = recon3dflex(varargin)
 %               0: default is to do nothing.
 %               1: use the complex mean of the navigator segment
 %               2: use only the phase of the segments.
+%   -mrf_mode:  Fingerprinting mode ()MRF)means that each temporal frame will 
+%               have a different set of rotation matrices.
 %
 
     % check that mirt is set up
@@ -46,12 +48,13 @@ function x = recon3dflex(varargin)
     defaults.ccfac = 1;
     defaults.frames = [];
     defaults.k0correct = 0;
+    defaults.mrf_mode = 0;
     
     % parse input parameters
     args = vararg_pair(defaults,varargin);
 
     % get data from pfile
-    [kdata,klocs,N,fov] = aslrec.read_data(args.pfile);
+    [kdata,klocs,N,fov] = aslrec.read_data(args.pfile , args.mrf_mode);
     if args.coilwise % rearrange for coil-wise reconstruction of frame 1 (for making SENSE maps)
         kdata = permute(kdata(:,:,1,:),[1,2,4,3]);
     end
@@ -62,8 +65,12 @@ function x = recon3dflex(varargin)
     klocs(1:50,:,:) = [];
     
     % get sizes
+    ndat = size(kdata,1);   % number of data per view.
+    nviews = size(kdata,2);  % number of view per frame
     nframes = size(kdata,3); % number of frames
     ncoils = size(kdata,4); % number of coils
+    framesize = ndat*nviews;  % number of data per frame.
+
     if isempty(args.frames)
         args.frames = 1:nframes; % default - use all frames
     end
@@ -97,21 +104,24 @@ function x = recon3dflex(varargin)
     x = zeros([N(:)',length(args.frames)]);
     
     % calculate a new system operator
-    % (LHG : this scales the k-space trajectory, 
-    % and masks out locations what may go outside the -pi to pi range)
-    omega = 2*pi*fov(:)'./N(:)'.*reshape(klocs,[],3);
-    omega_msk = vecnorm(omega,2,2) < pi;
-    omega = omega(omega_msk,:);
-    
-    % (LHG : this creates the system matrix A as a NUFFT ) 
-    A = Gnufft(true(N),[omega,nufft_args]); % NUFFT
-    w = aslrec.pipedcf(A,3); % calculate density compensation
-    if ncoils > 1 % sensitivity encoding
+    [A,w, omega_msk] = make_system_matrix(klocs(:,1:nviews,:), N, fov, nufft_args);
+    if ncoils > 1    % sensitivity encoding
         A = Asense(A,args.smap);
     end
     
     % loop through frames and recon
     for i = 1:length(args.frames)
+
+        % Usually just need to do this once, but in MRF mode the system matrix 
+        % changes from frame to frame. 
+        if (args.mrf_mode==1 && i>1 )
+            views = [1:nviews] + nviews*(i-1);
+            [A,w, omega_msk] = make_system_matrix(klocs(:,views, :), N, fov, nufft_args);
+            if ncoils > 1   % sensitivity encoding
+                A = Asense(A,args.smap);
+            end
+        end
+
         framen = args.frames(i);
 
         % get data for current frame
@@ -130,6 +140,22 @@ function x = recon3dflex(varargin)
         
     end
     
+end
+
+function [A,w, omega_msk] = make_system_matrix(klocs, N, fov, nufft_args)
+% function [A,w, omega_msk] = make_system_matrix(klocs, N, fov, nufft_args)
+% create a system fatrix and the density compensation for the recon
+    fprintf('...Making system matrix...')
+    % (LHG : this scales the k-space trajectory,
+    % and masks out locations what may go outside the -pi to pi range)    
+    omega = 2*pi*fov(:)'./N(:)'.*reshape(klocs,[],3);
+    omega_msk = vecnorm(omega,2,2) < pi;
+    omega = omega(omega_msk,:);
+    
+    % (LHG : this creates the system matrix A as a NUFFT )
+    A = Gnufft(true(N),[omega,nufft_args]); % NUFFT
+
+    w = aslrec.pipedcf(A,3); % calculate density compensation
 end
 
 function x_star = cg_solve(x0, A, b, niter, msg_pfx)
