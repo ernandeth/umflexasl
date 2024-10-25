@@ -32,7 +32,7 @@ function x = recon3dflex(varargin)
 %               0: default is to do nothing.
 %               1: use the complex mean of the navigator segment
 %               2: use only the phase of the segments.
-%   -mrf_mode:  Fingerprinting mode ()MRF)means that each temporal frame will 
+%   -mrf_mode:  Fingerprinting mode (MRF)means that each temporal frame will 
 %               have a different set of rotation matrices.
 %
 
@@ -55,6 +55,7 @@ function x = recon3dflex(varargin)
 
     % get data from pfile
     [kdata,klocs,N,fov] = aslrec.read_data(args.pfile , args.mrf_mode);
+
     if args.coilwise % rearrange for coil-wise reconstruction of frame 1 (for making SENSE maps)
         kdata = permute(kdata(:,:,1,:),[1,2,4,3]);
     end
@@ -75,27 +76,37 @@ function x = recon3dflex(varargin)
         args.frames = 1:nframes; % default - use all frames
     end
 
+
     % clean up data 
     if args.k0correct
         kdata = aslrec.k0correct(kdata, klocs, args.k0correct);
     end
     
     % do coil compression
-    if isempty(args.smap) && (ncoils > 1)
-        ncoils = 1;
-        warning('sense map is empty, compressing data to 1 coil...');
-        kdata = ir_mri_coil_compress(kdata,'ncoil',ncoils);
-    elseif (args.ccfac > 1) && (size(args.smap,4) == ncoils)
-        ncoils = ceil(ncoils/args.ccfac);
-        fprintf('compressing data & SENSE map to %d coils...\n', ncoils);
-        kdata = ir_mri_coil_compress(kdata,'ncoil',ncoils);
-        args.smap = ir_mri_coil_compress(args.smap,'ncoil',ncoils);
-    elseif size(args.smap,4) < ncoils
-        ncoils = size(args.smap,4);
-        warning('compressing data down to %d coils to match SENSE map...', ncoils);
-        kdata = ir_mri_coil_compress(kdata,'ncoil',ncoils);
+    if ncoils >1
+        if isempty(args.smap) 
+
+            ncoils = 1;  % why do this???
+            %ncoils = ceil(ncoils/args.ccfac);
+            %args.smap = ones([N ncoils]);
+        
+            fprintf('compressing data to %d coils...\n', ncoils);
+            kdata = ir_mri_coil_compress(kdata,'ncoil',ncoils);
+            
+        elseif (args.ccfac > 1) && (size(args.smap,4) == ncoils)
+            ncoils = ceil(ncoils/args.ccfac);
+            fprintf('compressing data & SENSE map to %d coils...\n', ncoils);
+            kdata = ir_mri_coil_compress(kdata,'ncoil',ncoils);
+            args.smap = ir_mri_coil_compress(args.smap,'ncoil',ncoils);
+        
+        elseif size(args.smap,4) < ncoils
+            ncoils = size(args.smap,4);
+            warning('compressing data down to %d coils to match SENSE map...', ncoils);
+            fprintf('compressing data down to %d coils to match SENSE map...', ncoils);
+            kdata = ir_mri_coil_compress(kdata,'ncoil',ncoils);
+        end
     end
-    
+
 
     % set nufft arguments
     nufft_args = {N, 6*ones(1,3), 2*N, N/2, 'table', 2^10, 'minmax:kb'};
@@ -105,7 +116,7 @@ function x = recon3dflex(varargin)
     
     % calculate a new system operator
     [A,w, omega_msk] = make_system_matrix(klocs(:,1:nviews,:), N, fov, nufft_args);
-    if ncoils > 1    % sensitivity encoding
+    if ncoils > 1   % sensitivity encoding
         A = Asense(A,args.smap);
     end
     
