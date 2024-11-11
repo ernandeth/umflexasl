@@ -89,8 +89,8 @@ function x = recon3dflex(varargin)
         sv = args.selectviews;
         nviews = length(sv);
         
-        kdata = kdata(:, sv, :,:);
-        klocs = klocs(:,sv,:,:);
+        kdata = kdata(:, sv, :, :);
+        klocs = klocs(:, sv, :);
     end
 
 
