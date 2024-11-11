@@ -34,6 +34,11 @@ function x = recon3dflex(varargin)
 %               2: use only the phase of the segments.
 %   -mrf_mode:  Fingerprinting mode (MRF)means that each temporal frame will 
 %               have a different set of rotation matrices.
+%   -selectviews: which echoes to use for recon and discard the rest.  
+%       This is a vector specifying the views that will be used.
+%       eg - if  Nshots=4 aand ETL=12, 
+%       but you only want the first 10 echoes, 
+%       choose this vector: [1:10, 13:22, 25:34 , 37:46] 
 %
 
     % check that mirt is set up
@@ -49,6 +54,7 @@ function x = recon3dflex(varargin)
     defaults.frames = [];
     defaults.k0correct = 0;
     defaults.mrf_mode = 0;
+    defaults.selectviews = [];
     
     % parse input parameters
     args = vararg_pair(defaults,varargin);
@@ -76,9 +82,20 @@ function x = recon3dflex(varargin)
         args.frames = 1:nframes; % default - use all frames
     end
 
+    % choosing only the selected view for reconstruction and discarding the
+    % rest of them.
+    if ~isempty(args.selectviews)
+        
+        sv = args.selectviews;
+        nviews = length(sv);
+        
+        kdata = kdata(:, sv, :,:);
+        klocs = klocs(:,sv,:,:);
+    end
+
 
     % clean up data 
-    if args.k0correct
+    if args.k0correct>0
         kdata = aslrec.k0correct(kdata, klocs, args.k0correct);
     end
     
@@ -92,6 +109,10 @@ function x = recon3dflex(varargin)
         
             fprintf('compressing data to %d coils...\n', ncoils);
             kdata = ir_mri_coil_compress(kdata,'ncoil',ncoils);
+
+            % try doing sum of squares of the coils... BAD idea!
+            %fprintf('sum of squares to %d coils...\n', ncoils);
+            %kdata = sqrt(sum(kdata.^2,4));
             
         elseif (args.ccfac > 1) && (size(args.smap,4) == ncoils)
             ncoils = ceil(ncoils/args.ccfac);
