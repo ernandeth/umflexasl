@@ -3009,12 +3009,16 @@ STATUS prescanCore() {
 			fprintf(stderr, "prescanCore(): Playing flip pulse for prescan iteration %d...\n", view);
 			ttotal += play_rf1(90*(ro_type == 1));
 
+			/* set rotation matrix for each echo readout */
+			setrotate( tmtxtbl[echon], 0 );
+
 			fprintf(stderr, "prescanCore(): playing readout for prescan iteration %d , echo %d...\n", view, echon);
 			ttotal += play_readout();
+
+			/*restore gradients for exctiation pulse*/				
+			setrotate( tmtx0, 0 );
 		}
 
-		/* restore gradients */				
-		/*setrotate( tmtx0, 0 );*/
 
 		fprintf(stderr, "prescanCore(): playing deadtime for prescan iteration %d...\n", view);
 		play_deadtime(optr - ttotal);
@@ -4150,6 +4154,7 @@ int write_scan_info() {
 	FILE *finfo = fopen("scaninfo.txt","w");
 	fprintf(finfo, "Rx parameters:\n");
 	fprintf(finfo, "\t%-50s%20f %s\n", "X/Y FOV:", (float)opfov/10.0, "cm");
+	fprintf(finfo, "\t%-50s%20d \n", "Matrix size:", opxres);
 	fprintf(finfo, "\t%-50s%20f %s\n", "3D slab thickness:", (float)opslquant*opslthick/10.0, "cm"); 	
 
 	fprintf(finfo, "Hardware limits:\n");
