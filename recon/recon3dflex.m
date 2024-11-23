@@ -65,6 +65,7 @@ function x = recon3dflex(varargin)
     if args.coilwise % rearrange for coil-wise reconstruction of frame 1 (for making SENSE maps)
         kdata = permute(kdata(:,:,1,:),[1,2,4,3]);
     end
+
     N = ceil(N*args.resfac); % upsample N (image matrix size)
     
     % cut off first 50 pts of acquisition (sometimes gets corrupted)
@@ -112,7 +113,7 @@ function x = recon3dflex(varargin)
 
             % try doing sum of squares of the coils... BAD idea!
             %fprintf('sum of squares to %d coils...\n', ncoils);
-            %kdata = sqrt(sum(kdata.^2,4));
+            %kdata = sqrt(sum(kdata `.^2,4));
             
         elseif (args.ccfac > 1) && (size(args.smap,4) == ncoils)
             ncoils = ceil(ncoils/args.ccfac);
@@ -135,43 +136,63 @@ function x = recon3dflex(varargin)
     % initialize x
     x = zeros([N(:)',length(args.frames)]);
     
-    % calculate a new system operator
-    [A,w, omega_msk] = make_system_matrix(klocs(:,1:nviews,:), N, fov, nufft_args);
-    if ncoils > 1   % sensitivity encoding
-        A = Asense(A,args.smap);
-    end
-    
-    % loop through frames and recon
-    for i = 1:length(args.frames)
+    if (args.mrf_mode==0)
+        % calculate a new system operator  just once
+        [A,w, omega_msk] = make_system_matrix(klocs(:,1:nviews,:), N, fov, nufft_args);
+        if ncoils > 1   % sensitivity encoding
+            A = Asense(A,args.smap);
+        end
 
-        % Usually just need to do this once, but in MRF mode the system matrix 
-        % changes from frame to frame. 
-        if (args.mrf_mode==1 && i>1 )
+        % loop through frames and recon
+        parfor i = 1:length(args.frames)
+
+            framen = args.frames(i);
+
+            % get data for current frame
+            % (LHG: dimensions will be (Ndat*Nshots*Nechoes x Ncoils)
+            b = reshape(kdata(:,:,framen,:),[],ncoils);
+            b = b(omega_msk,:);
+
+            % initialize with density compensated adjoint solution
+            fprintf("frame %d/%d: initializing solution x0 = A'*(w.*b)\n", i, length(args.frames))
+            x0 = reshape( A' * (w.*b), N );
+            x0 = ir_wls_init_scale(A, b, x0);
+
+            % solve with CG
+            x(:,:,:,i) = cg_solve(x0, A, b, args.niter, ...
+                sprintf('frame %d/%d: ', i, length(args.frames))); % prefix the output message with frame number
+
+        end
+
+    else  % MRF case
+
+        parfor i = 1:length(args.frames)
+            % Usually just need to do this once, but in MRF mode the system matrix
+            % changes from frame to frame.
             views = [1:nviews] + nviews*(i-1);
             [A,w, omega_msk] = make_system_matrix(klocs(:,views, :), N, fov, nufft_args);
             if ncoils > 1   % sensitivity encoding
                 A = Asense(A,args.smap);
             end
+            framen = args.frames(i);
+
+            % get data for current frame
+            % (LHG: dimensions will be (Ndat*Nshots*Nechoes x Ncoils)
+            b = reshape(kdata(:,:,framen,:),[],ncoils);
+            b = b(omega_msk,:);
+
+            % initialize with density compensated adjoint solution
+            fprintf("frame %d/%d: initializing solution x0 = A'*(w.*b)\n", i, length(args.frames))
+            x0 = reshape( A' * (w.*b), N );
+            x0 = ir_wls_init_scale(A, b, x0);
+
+            % solve with CG
+            x(:,:,:,i) = cg_solve(x0, A, b, args.niter, ...
+                sprintf('frame %d/%d: ', i, length(args.frames))); % prefix the output message with frame number
+
         end
-
-        framen = args.frames(i);
-
-        % get data for current frame
-        % (LHG: dimensions will be (Ndat*Nshots*Nechoes x Ncoils)
-        b = reshape(kdata(:,:,framen,:),[],ncoils);
-        b = b(omega_msk,:);
-        
-        % initialize with density compensated adjoint solution
-        fprintf("frame %d/%d: initializing solution x0 = A'*(w.*b)\n", i, length(args.frames))
-        x0 = reshape( A' * (w.*b), N );
-        x0 = ir_wls_init_scale(A, b, x0);
-        
-        % solve with CG
-        x(:,:,:,i) = cg_solve(x0, A, b, args.niter, ...
-            sprintf('frame %d/%d: ', i, length(args.frames))); % prefix the output message with frame number
-        
     end
-    
+
 end
 
 function [A,w, omega_msk] = make_system_matrix(klocs, N, fov, nufft_args)
