@@ -262,9 +262,9 @@ float 	pcasl_delta_phs = 0;
 float 	pcasl_delta_phs_correction = 0.0;  /* this is about typical */
 int		pcasl_delta_phs_dac = 0;
 int 	pcasl_RFdur = 500us;
-float 	pcasl_Gamp =  0.35;  /* slice select lobe for PCASL RF pulse G/cm .... Lizhao paper: 0.35
+float 	pcasl_Gamp =  0.7;  /* slice select lobe for PCASL RF pulse G/cm .... Lizhao paper: 0.35
 								Jahanian used 0.6*/
-float	pcasl_Gave = 0.05;  /* average gradient for each pulse in the train.  LiZhao paper: 0.05 
+float	pcasl_Gave = 0.07;  /* average gradient for each pulse in the train.  LiZhao paper: 0.05 
 								Jahanian used 0.39 */
 float	pcasl_Gref_amp;     /* refocuser gradient */
 int		pcasl_tramp =  120us; 
