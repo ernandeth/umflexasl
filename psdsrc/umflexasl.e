@@ -938,7 +938,7 @@ STATUS cveval( void )
 	opuser41 = pcasl_distance*10;
 	cvmin(opuser41, 0);
 	cvmax(opuser41, 500);	
-	pcasl_distance = opuser41/10.0;
+	pcasl_distance = opuser41/10.0;  /* cm */
 
 	piuset2 += use42;
 	cvdesc(opuser42, "Num. M0 frames (no label or BGS)");
@@ -1298,6 +1298,9 @@ STATUS predownload( void )
 	/* calculate linear phase increment for PCASL train:
 	units: GAMMA (rad/s/G) , mom (G/cm*us) , pcasl_distance_adjust (cm) */
 	pcasl_delta_phs = -GAMMA* pcasl_Gave * pcasl_period * pcasl_distance_adjust * 1e-6;
+	
+	pcasl_delta_phs = GAMMA* pcasl_Gave * pcasl_period * pcasl_distance_adjust * 1e-6;
+	
 	fprintf(stderr, "\npredownload(): PCASL linear phase increment: %f radians", pcasl_delta_phs);
 
 	/* scale the  PCASL amplitude of RF pulses for the RHO channel... also in DAC units*/
