@@ -386,7 +386,7 @@ int make_pcasl_schedule(
 		int *pcasl_tbgs1tbl, 
 		int *pcasl_tbgs2tbl);
 
-int init_pcasl_phases(
+int calc_pcasl_phases(
 		int *iphase_tbl, 
 		float  myphase_increment, 
 		int nreps);
@@ -1268,7 +1268,7 @@ STATUS predownload( void )
 	fprintf(stderr, "\npredownload(): piscancenter: %f", piscancenter);
 	fprintf(stderr, "\npredownload(): pcasl_distance (adjusted) : %f", pcasl_distance_adjust);
 
-	pcasl_RFfreq = -pcasl_distance_adjust * GAMMA/2/M_PI * pcasl_Gamp ; 
+	pcasl_RFfreq = -pcasl_distance_adjust * GAMMA/2/M_PI * pcasl_Gamp ; /* Hz */
 	/* DEBUGGING:   is the piscancenter not right???? 
 	if we use the pcasl_distance_adjust here, it should also be used for 
 	the pcasl_delta_phs calculation!  */
@@ -1278,7 +1278,7 @@ STATUS predownload( void )
 	mom1 = pcasl_Gamp*(pcasl_RFdur + pcasl_tramp) ;
 	/* Gradient moment of refocuser is calculated to maintain a specific gradient moment
 	for the pcasl module.  This moment is expressed as an average gradient : pcasl_Gave 
-	mom1 and mom2 are the gradient moments of each of the lobes in the pcasl module
+	mom1 and mom2 are the gradient moments (areas) of each of the lobes in the pcasl module
 	most papers specify G_ss and G_ave, so we have to calculate the amplitude of the G_ref
 	(units of mom1 and mom2:  G/cm * us)
   
@@ -1296,7 +1296,9 @@ STATUS predownload( void )
 	fprintf(stderr, "\npredownload(): PCASL refocuser gradient ramps: %d ", pw_gzpcaslrefa);
 
 	/* calculate linear phase increment for PCASL train:
-	units: GAMMA (rad/s/G) , mom (G/cm*us) , pcasl_distance_adjust (cm) */
+	units: 
+		GAMMA (rad/s/G) , mom (G/cm*us) , pcasl_distance_adjust (cm) , 
+		pcasl_period (us), pcasl_Gave (G/cm)*/
 	pcasl_delta_phs = -GAMMA* pcasl_Gave * pcasl_period * pcasl_distance_adjust * 1e-6;
 		
 	fprintf(stderr, "\npredownload(): PCASL linear phase increment: %f radians", pcasl_delta_phs);
@@ -1316,8 +1318,8 @@ STATUS predownload( void )
 	pcasl_delta_phs = pcasl_delta_phs + pcasl_delta_phs_correction;
 	pcasl_delta_phs = atan2( sin(pcasl_delta_phs), cos(pcasl_delta_phs));
 	fprintf(stderr, "\npredownload(): CORRECTED PCASL linear phase increment: %f (rads)", pcasl_delta_phs);
-	fprintf(stderr, "\npredownload(): calling init_pcasl_phases() to make the linear phase sweep \n");
-	init_pcasl_phases(pcasl_iphase_tbl, pcasl_delta_phs, MAXPCASLSEGMENTS);
+	fprintf(stderr, "\npredownload(): calling calc_pcasl_phases() to make the linear phase sweep \n");
+	calc_pcasl_phases(pcasl_iphase_tbl, pcasl_delta_phs, MAXPCASLSEGMENTS);
 
 
 	/* velocity spectrum default venc gradient increments - so that it goes from -4.0 to +4.0 G/cm */
@@ -2630,9 +2632,10 @@ int play_pcasl(int type,  int tbgs1, int tbgs2, int pld) {
 	int ttotal = 0;
 	int i;
 	float pcasl_toggle = 1.0; /* variable to switch from control to label... (+1 or -1)*/
+	/* 
 	float tmpPHI=0.0;
-	int iphase;
-
+	int iphase=0;
+	*/
 	pcasl_Npulses = (int)(floor(pcasl_duration/pcasl_period));
 
 	/* set the RF frequency for labeling pulses */
@@ -2664,15 +2667,15 @@ int play_pcasl(int type,  int tbgs1, int tbgs2, int pld) {
 		setiamp((int)(pow(pcasl_toggle,i) * pcasl_RFamp_dac), &rfpcasl, 0);
 
 		/* fprintf(stderr, "\tplay_pcasl(): pulse phase %f (rads)...\n", tmpPHI );*/
-		/* set the phase of the blips incrementing phase each time */
+		/* set the phase of the blips incrementing phase each time - previously calculated*/
+		setiphase(pcasl_iphase_tbl[i], &rfpcasl,0);
 		 
-		/* setphase(tmpPHI, &rfpcasl, 0  );*/
-		tmpPHI += pcasl_delta_phs; 
-                tmpPHI = atan2 (sin(tmpPHI), cos(tmpPHI));      /* wrap phase to (-pi,pi) range */
-
-		/* go to DAC units */
-                iphase = (int)(tmpPHI/M_PI * (float)FS_PI);
+		/*
+	    tmpPHI = atan2 (sin(tmpPHI), cos(tmpPHI));     
+        iphase = (int)(tmpPHI/M_PI * (float)FS_PI);
 		setiphase(iphase, &rfpcasl,0);
+		tmpPHI += pcasl_delta_phs; 
+		*/
 
 		boffset(off_pcaslcore);
 		startseq(0, MAY_PAUSE);
@@ -2743,19 +2746,20 @@ int play_pcasl(int type,  int tbgs1, int tbgs2, int pld) {
 /* LHG 12/6/12 : compute the linear phase increment of the PCASL pulses - NOT USED currently*/
 int calc_pcasl_phases(int *iphase_tbl, float  myphase_increment, int nreps)
 {
-        int     n;
-        double  rfphase; 
- 
+	int     n;
+	double  rfphase; 
+
 	fprintf(stderr,"\nUpdating PCASL phase table .... "); 
-        rfphase=0;
-    	 
-        for (n=0; n<nreps*2; n++)
-        {
-                rfphase += myphase_increment;
-                rfphase = atan2 (sin(rfphase), cos(rfphase));      /* wrap phase to (-pi,pi) range */
+	rfphase = 0.0;
+
+	for (n=0; n<nreps*2; n++)
+	{
+		rfphase += myphase_increment;
+		/* wrap phase to (-pi,pi) range */
+		rfphase = atan2 (sin(rfphase), cos(rfphase));      
 		/* translate to DAC units */
-                iphase_tbl[n] = (int)(rfphase/M_PI * (float)FS_PI);
-        }
+		iphase_tbl[n] = (int)(rfphase/M_PI * (float)FS_PI);
+	}
 	fprintf(stderr,"Done .\n "); 
 	return 1;
 }               
@@ -3242,8 +3246,8 @@ STATUS scan( void )
 				vspectrum_rep = 0;
 				pcasl_delta_phs += phs_cal_step;
 				fprintf(stderr, "\n\n scan() CALIBRATION: updating PCASL linear phase increment: %f (rads) and phase table\n\n", pcasl_delta_phs);
-				/* update the pcasl phase table - NOT USED currently */
-				/* calc_pcasl_phases(pcasl_iphase_tbl, pcasl_delta_phs, MAXPCASLSEGMENTS);*/
+				/* update the pcasl phase table*/
+				calc_pcasl_phases(pcasl_iphase_tbl, pcasl_delta_phs, MAXPCASLSEGMENTS);
 			}
 			vspectrum_rep++;
 		}
@@ -4100,7 +4104,7 @@ float calc_hard_B1(int pw_rf, float flip_rf) {
 }
 
 /* LHG 12/6/12 : compute the linear phase increment of the PCASL pulses */
-int init_pcasl_phases(int *iphase_tbl, float  myphase_increment, int nreps)
+int calc_pcasl_phases(int *iphase_tbl, float  myphase_increment, int nreps)
 {
         int     n;
         double  rfphase; 
@@ -4311,8 +4315,8 @@ int write_scan_info() {
 		fprintf(finfo, "\t%-50s%20d\n", "pcasl_tbgs2 (us)", pcasl_tbgs2);
 		fprintf(finfo, "\t%-50s%20f\n", "pcasl_Gamp", pcasl_Gamp);
 		fprintf(finfo, "\t%-50s%20f\n", "pcasl_Gave", pcasl_Gave);
-		fprintf(finfo, "\t%-50s%20d\n", "pcasl_period", pcasl_period);
-		fprintf(finfo, "\t%-50s%20f\n", "pcasl_RFamp", pcasl_RFamp);
+		fprintf(finfo, "\t%-50s%20d\n", "pcasl_period (us)", pcasl_period);
+		fprintf(finfo, "\t%-50s%20f\n", "pcasl_RFamp (mG)", pcasl_RFamp);
 
 		if(pcasl_calib){
 			fprintf(finfo, "\t%-50s%20d\n", "Phase calibration run", pcasl_calib);
