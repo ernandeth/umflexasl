@@ -249,9 +249,12 @@ int pcasl_tbgs1 = 0 with {0, , 0, VIS, "PCASL prep  : (us) 1st background suppre
 int pcasl_tbgs2 = 0 with {0, , 0, VIS, "PCASL prep  : (us) 2nd background suppression delay (0 = no pulse)",};
 
 int		pcasl_flag = 0; /* when this is turned to 1, prep1 pulse gets replaced with a PCASL pulse*/
+
 int		pcasl_calib = 0 with {0, 1 , 0, VIS, "do PCASL phase calibration?",};
 int		pcasl_calib_frames = 4 with {0, , 100, VIS, "N. frames per phase increment",};
+int		pcasl_calib_cnt = 0;
 float 	phs_cal_step = 0.0;
+
 int		pcasl_period = 1500; /* (us) duration of one of the PCASL 'units' 
 								Li Zhao paper used 1200 - I really want it to shrink it to 1000*/ 
 int 	pcasl_Npulses = 1700;
@@ -2752,7 +2755,7 @@ int calc_pcasl_phases(int *iphase_tbl, float  myphase_increment, int nreps)
 	fprintf(stderr,"\nUpdating PCASL phase table .... "); 
 	rfphase = 0.0;
 
-	for (n=0; n<nreps*2; n++)
+	for (n=0; n<nreps; n++)
 	{
 		rfphase += myphase_increment;
 		/* wrap phase to (-pi,pi) range */
@@ -3241,15 +3244,15 @@ STATUS scan( void )
 			nm0frames = 0;
 			phs_cal_step = 2.0*M_PI / (float)(nframes) * (float)(pcasl_calib_frames);
 
-			fprintf(stderr, "\nscan(): Phase calibration counter: %d \n", vspectrum_rep); 
-			if (vspectrum_rep == pcasl_calib_frames ){
-				vspectrum_rep = 0;
-				pcasl_delta_phs += phs_cal_step;
+			fprintf(stderr, "\nscan(): Phase calibration counter: %d \n", pcasl_calib_cnt); 
+			
+			if (pcasl_calib_cnt == pcasl_calib_frames ){
 				fprintf(stderr, "\n\n scan() CALIBRATION: updating PCASL linear phase increment: %f (rads) and phase table\n\n", pcasl_delta_phs);
-				/* update the pcasl phase table*/
+				pcasl_delta_phs += phs_cal_step;				
 				calc_pcasl_phases(pcasl_iphase_tbl, pcasl_delta_phs, MAXPCASLSEGMENTS);
+				pcasl_calib_cnt = 0;
 			}
-			vspectrum_rep++;
+			pcasl_calib_cnt++;
 		}
 
 		/* MRF ASL mode
@@ -4106,19 +4109,19 @@ float calc_hard_B1(int pw_rf, float flip_rf) {
 /* LHG 12/6/12 : compute the linear phase increment of the PCASL pulses */
 int calc_pcasl_phases(int *iphase_tbl, float  myphase_increment, int nreps)
 {
-        int     n;
-        double  rfphase; 
- 
+	int     n;
+	double  rfphase; 
+
 	fprintf(stderr,"\nUpdating PCASL phase table .... "); 
-        rfphase=0;
-    	 
-        for (n=0; n<nreps*2; n++)
-        {
-                rfphase += myphase_increment;
-                rfphase = atan2 (sin(rfphase), cos(rfphase));      /* wrap phase to (-pi,pi) range */
+	rfphase = 0.0;
+
+	for (n=0; n<nreps; n++)
+	{
+		rfphase += myphase_increment;
+		rfphase = atan2 (sin(rfphase), cos(rfphase));      /* wrap phase to (-pi,pi) range */
 		/* translate to DAC units */
-                iphase_tbl[n] = (int)(rfphase/M_PI * (float)FS_PI);
-        }
+		iphase_tbl[n] = (int)(rfphase/M_PI * (float)FS_PI);
+	}
 	fprintf(stderr,"Done .\n "); 
 	return 1;
 }               
