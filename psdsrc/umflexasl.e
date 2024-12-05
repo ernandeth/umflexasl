@@ -1324,9 +1324,10 @@ STATUS predownload( void )
 	fprintf(stderr, "\npredownload(): calling calc_pcasl_phases() to make the linear phase sweep \n");
 	calc_pcasl_phases(pcasl_iphase_tbl, pcasl_delta_phs, MAXPCASLSEGMENTS);
 
-
-	/* velocity spectrum default venc gradient increments - so that it goes from -4.0 to +4.0 G/cm */
-	prep1_delta_gmax = 2.0*4.0 / ((float)nframes/(float)vspectrum_Navgs -1)  ;
+	if (doVelSpectrum==2){
+		/* velocity spectrum default venc gradient increments - so that it goes from -4.0 to +4.0 G/cm */
+		prep1_delta_gmax = 2.0*4.0 / ((float)nframes/(float)vspectrum_Navgs -1)  ;
+	}
 
 	/* -------------------------*/
 
@@ -2268,7 +2269,7 @@ STATUS pulsegen( void )
 	/*************************/
 	/* generate rf0 core */
 	/*************************/
-	fprintf(stderr, "pulsegen(): beginning pulse generation of rf0 core\n");
+	fprintf(stderr, "pulsegen():  beginning pulse generation of rf0 core\n");
 	tmploc = 0;
 
 	fprintf(stderr, "pulsegen(): generating rf0 (rf0 pulse)...\n");
@@ -2671,7 +2672,9 @@ int play_pcasl(int type,  int tbgs1, int tbgs2, int pld) {
 
 		/* fprintf(stderr, "\tplay_pcasl(): pulse phase %f (rads)...\n", tmpPHI );*/
 		/* set the phase of the blips incrementing phase each time - previously calculated*/
-		setiphase(pcasl_iphase_tbl[i], &rfpcasl,0);
+		
+		/* setiphase(pcasl_iphase_tbl[i], &rfpcasl,0); */
+		setiphase(-pcasl_iphase_tbl[i], &rfpcasl,0);
 		 
 		/*
 	    tmpPHI = atan2 (sin(tmpPHI), cos(tmpPHI));     
@@ -3242,7 +3245,7 @@ STATUS scan( void )
 		*/
 		if (pcasl_flag	&& pcasl_calib) {
 			nm0frames = 0;
-			phs_cal_step = 2.0*M_PI / (float)(nframes) * (float)(pcasl_calib_frames);
+			phs_cal_step = 2.0*M_PI / (float)(nframes) / (float)(pcasl_calib_frames);
 
 			fprintf(stderr, "\nscan(): Phase calibration counter: %d \n", pcasl_calib_cnt); 
 			
@@ -3390,11 +3393,6 @@ STATUS scan( void )
 						/* The default is to use a constant refocuser flip angle*/
 						arf1_var = a_rf1;
 
-						if(varflip) {
-							/* variable flip angle refocuser pulses to get more signal 
-							- linearly increasing schedule */
-							arf1_var = a_rf1 + (float)echon*(arf180-a_rf1)/(float)(opetl-1); 
-						}
 						if (echon==0){
 							/*using a "stabilizer" for the first of the echoes in the train
 								flip[0] = 90 + (vflip)/2         
@@ -3406,6 +3404,11 @@ STATUS scan( void )
 								90x - 180y - 180y - 180y -180y ...  */
 
 							arf1_var = a_rf0 + a_rf1/2;
+						}
+						if(varflip) {
+							/* variable flip angle refocuser pulses to get more signal 
+							- linearly increasing schedule */
+							arf1_var = a_rf1 + (float)echon*(arf180-a_rf1)/(float)(opetl-1); 
 						}
 					
 						/* set the transmitter gain after the adjustments */
@@ -4118,7 +4121,8 @@ int calc_pcasl_phases(int *iphase_tbl, float  myphase_increment, int nreps)
 	for (n=0; n<nreps; n++)
 	{
 		rfphase += myphase_increment;
-		rfphase = atan2 (sin(rfphase), cos(rfphase));      /* wrap phase to (-pi,pi) range */
+		/* wrap phase to (-pi,pi) range */
+		rfphase = atan2 (sin(rfphase), cos(rfphase));
 		/* translate to DAC units */
 		iphase_tbl[n] = (int)(rfphase/M_PI * (float)FS_PI);
 	}
@@ -4175,6 +4179,7 @@ int write_scan_info() {
 			fprintf(finfo, "\t%-50s%20s\n", "Readout type:", "FSE");
 			fprintf(finfo, "\t%-50s%20f %s\n", "Flip (inversion) angle:", opflip, "deg");
 			fprintf(finfo, "\t%-50s%20f %s\n", "Echo time:", (float)opte*1e-3, "ms");
+			fprintf(finfo, "\t%-50s%20d \n", "variable FA flag:", varflip );
 			break;
 		case 2: /* SPGR */
 			fprintf(finfo, "\t%-50s%20s\n", "Readout type:", "SPGR");
