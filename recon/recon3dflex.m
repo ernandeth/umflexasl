@@ -28,18 +28,22 @@ function x = recon3dflex(varargin)
 %   - frames: frame indicies to reconstruct (default is all frames,
 %       reconned sequentially)
 %   - k0correct: scale each of the FIDs (views) according to the mean signal
-%               in the navigator segment (redundant points collected in the center of k space)
+%       in the navigator segment (redundant points collected in the center of k space)
 %               0: default is to do nothing.
 %               1: use the complex mean of the navigator segment
 %               2: use only the phase of the segments.
-%   -mrf_mode:  Fingerprinting mode (MRF)means that each temporal frame will 
-%               have a different set of rotation matrices.
-%   -selectviews: which echoes to use for recon and discard the rest.  
+%   - mrf_mode:  Fingerprinting mode (MRF)means that each temporal frame will 
+%       have a different set of rotation matrices.
+%   - selectviews: which echoes to use for recon and discard the rest.  
 %       This is a vector specifying the views that will be used.
 %       eg - if  Nshots=4 aand ETL=12, 
 %       but you only want the first 10 echoes, 
 %       choose this vector: [1:10, 13:22, 25:34 , 37:46] 
-%
+%   - aqdel (N) : adjust acquisition delay by shifting the readout N points 
+%       in time (it will result in losing aqdel data points per view)
+%   - despike (N-std) : replace kspace data in time series by average of
+%       neighboring frames if they deviate more than a specified threshold.
+%       Does the odds and the eves time frames separately (for ASL)
 
     % check that mirt is set up
     aslrec.check4mirt();
@@ -55,16 +59,18 @@ function x = recon3dflex(varargin)
     defaults.k0correct = 0;
     defaults.mrf_mode = 0;
     defaults.selectviews = [];
-    
+    defaults.aqdel = 0;
+    defaults.despike = [];
+
     % parse input parameters
     args = vararg_pair(defaults,varargin);
 
     % get data from pfile
     [kdata,klocs,N,fov] = aslrec.read_data(args.pfile , args.mrf_mode);
-
-    if args.coilwise % rearrange for coil-wise reconstruction of frame 1 (for making SENSE maps)
-        kdata = permute(kdata(:,:,1,:),[1,2,4,3]);
-    end
+    % 
+    % if args.coilwise % rearrange for coil-wise reconstruction of frame 1 (for making SENSE maps)
+    %     kdata = permute(kdata(:,:,1,:),[1,2,4,3]);
+    % end
 
     N = ceil(N*args.resfac); % upsample N (image matrix size)
     
@@ -95,38 +101,75 @@ function x = recon3dflex(varargin)
     end
 
 
-    % clean up data 
+    % clean up data scaling
     if args.k0correct>0
         kdata = aslrec.k0correct(kdata, klocs, args.k0correct);
     end
     
+    % Remove spikes from data
+    if ~isempty(args.despike)
+        kdata = aslrec.despike_data(kdata,3);
+    end
+
+    % fix acquisition delays (time shits)
+    if args.aqdel ~= 0
+        [kdata klocs] = aslrec.aqdel(kdata, klocs, args.aqdel);
+    end
+
     % do coil compression
     if ncoils >1
-        if isempty(args.smap) 
+
+        if (args.ccfac==1) && isempty(args.smap) && (args.coilwise==0)
 
             ncoils = 1;  % why do this???
-            %ncoils = ceil(ncoils/args.ccfac);
-            %args.smap = ones([N ncoils]);
-        
+            
             fprintf('compressing data to %d coils...\n', ncoils);
-            kdata = ir_mri_coil_compress(kdata,'ncoil',ncoils);
+            [kdata, sing, Vr] = ir_mri_coil_compress(kdata,'ncoil',ncoils);
 
             % try doing sum of squares of the coils... BAD idea!
-            %fprintf('sum of squares to %d coils...\n', ncoils);
-            %kdata = sqrt(sum(kdata `.^2,4));
+            % fprintf('sum of squares to %d coils...\n', ncoils);
+            % kdata = sqrt(sum(kdata `.^2,4));
             
-        elseif (args.ccfac > 1) && (size(args.smap,4) == ncoils)
+        elseif (args.ccfac > 1)
             ncoils = ceil(ncoils/args.ccfac);
-            fprintf('compressing data & SENSE map to %d coils...\n', ncoils);
-            kdata = ir_mri_coil_compress(kdata,'ncoil',ncoils);
-            args.smap = ir_mri_coil_compress(args.smap,'ncoil',ncoils);
-        
-        elseif size(args.smap,4) < ncoils
+            fprintf('compressing data to %d coils...\n', ncoils);
+            % kdata = ir_mri_coil_compress(kdata,'ncoil',ncoils);
+            % args.smap = ir_mri_coil_compress(args.smap,'ncoil',ncoils);
+            
+            % compress the data
+            [kdata, sing, Vr] = ir_mri_coil_compress(kdata,'ncoil',ncoils);
+
+            % compress the sense maps
+            % kc = fftc(args.smap, 1:3);  % make smaps in kspace 
+            % 
+            % idim = size(kc);  % input dimensions -before compression
+            % n_in = idim(end);
+            % kc = reshape(kc, [], n_in); % [*N n_in]
+            % cckc = kc * Vr;             % compres smaps in  k-smaps
+            % 
+            % odim = idim;
+            % odim(end) = ncoils;  % dimensions after compression
+            % cckc = reshape(cckc,odim);
+            % 
+            % args.smap = ifftc(args.smap, 1:3);
+
+        elseif (size(args.smap,4) < ncoils) && (args.coilwise==0)
             ncoils = size(args.smap,4);
             warning('compressing data down to %d coils to match SENSE map...', ncoils);
             fprintf('compressing data down to %d coils to match SENSE map...', ncoils);
             kdata = ir_mri_coil_compress(kdata,'ncoil',ncoils);
         end
+
+
+    end
+
+    % Making sense maps (after compressing the data, if needed)
+    if args.coilwise 
+        % rearrange for coil-wise reconstruction of frame 1 (for making SENSE maps)
+        % pretend the coil images are the frames and it's only one coil  
+        kdata = permute(kdata(:,:,1,:),[1,2,4,3]);
+        args.frames = 1:size(kdata,3);
+        ncoils =1;
     end
 
 
@@ -139,12 +182,15 @@ function x = recon3dflex(varargin)
     if (args.mrf_mode==0)
         % calculate a new system operator  just once
         [A,w, omega_msk] = make_system_matrix(klocs(:,1:nviews,:), N, fov, nufft_args);
-        if ncoils > 1   % sensitivity encoding
+        if ncoils > 1  && args.coilwise==0 % sensitivity encoding
+            fprintf('... with sense maps\n');
             A = Asense(A,args.smap);
         end
 
         % loop through frames and recon
+        if isempty(gcp('nocreate')), parpool(6), end
         parfor i = 1:length(args.frames)
+        %for i = 1:length(args.frames)
 
             framen = args.frames(i);
 
@@ -165,13 +211,13 @@ function x = recon3dflex(varargin)
         end
 
     else  % MRF case
-
-        parfor i = 1:length(args.frames)
+        for i = 1:length(args.frames)
+        %parfor i = 1:length(args.frames)
             % Usually just need to do this once, but in MRF mode the system matrix
             % changes from frame to frame.
             views = [1:nviews] + nviews*(i-1);
             [A,w, omega_msk] = make_system_matrix(klocs(:,views, :), N, fov, nufft_args);
-            if ncoils > 1   % sensitivity encoding
+            if ncoils > 1   && args.coilwise==0 % sensitivity encoding
                 A = Asense(A,args.smap);
             end
             framen = args.frames(i);
@@ -208,7 +254,7 @@ function [A,w, omega_msk] = make_system_matrix(klocs, N, fov, nufft_args)
     % (LHG : this creates the system matrix A as a NUFFT )
     A = Gnufft(true(N),[omega,nufft_args]); % NUFFT
 
-    w = aslrec.pipedcf(A,3); % calculate density compensation
+    w = aslrec.pipedcf(A,10); % calculate density compensation
 end
 
 function x_star = cg_solve(x0, A, b, niter, msg_pfx)
