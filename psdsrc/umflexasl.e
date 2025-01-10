@@ -1756,12 +1756,10 @@ STATUS predownload( void )
 	dur_seqcore = 0;
 	dur_seqcore += deadtime1_seqcore + pgbuffertime;
 	dur_seqcore += (flowcomp_flag == 1 && spi_mode == 0)*(pw_gzfca + pw_gzfc + pw_gzfcd + pgbuffertime);
-	dur_seqcore += (spi_mode == 0) * (pw_gzw1a + pw_gzw1 + pw_gzw1d + pgbuffertime); /* z rewind gradient */
+	dur_seqcore += (spi_mode == 0) * (pw_gzw1a + pw_gzw1 + pw_gzw1d + pgbuffertime); /* SOS z encode gradient */
 	dur_seqcore += pw_gxw;
-	dur_seqcore += pgbuffertime;
-	dur_seqcore += pw_gzw2a + pw_gzw2 + pw_gzw2d;
-	dur_seqcore += pgbuffertime;
-	dur_seqcore += deadtime2_seqcore;
+	dur_seqcore += (spi_mode == 0) * (pw_gzw2a + pw_gzw2 + pw_gzw2d + pgbuffertime);  /* SOS - z rewinder*/
+	dur_seqcore += deadtime2_seqcore + pgbuffertime;
 
 	/* calculate minimum TR */
 	absmintr = presat_flag*(dur_presatcore + TIMESSI + presat_delay + TIMESSI);
@@ -2318,12 +2316,15 @@ STATUS pulsegen( void )
 	tmploc += pw_gzrf1a + pw_gzrf1 + pw_gzrf1d; /* end time for rf2 pulse */
 	fprintf(stderr, " end: %dus\n", tmploc);
 
-	fprintf(stderr, "pulsegen(): generating gzrf1trap2 (post-rf1 gradient trapezoid)...\n");
-	tmploc += pgbuffertime; /* start time for gzrf1trap2 */
-	TRAPEZOID(ZGRAD, gzrf1trap2, tmploc + pw_gzrf1trap2a, 3200, 0, loggrd);
-	fprintf(stderr, "\tstart: %dus, ", tmploc);
-	tmploc += pw_gzrf1trap2a + pw_gzrf1trap2 + pw_gzrf1trap2d; /* end time for gzrf1trap2 pulse */
-	fprintf(stderr, " end: %dus\n", tmploc);
+	if (ro_type != 3) { /* bSSFP - do not use trap2 */
+		fprintf(stderr, "pulsegen(): generating gzrf1trap2 (post-rf1 gradient trapezoid)...\n");
+		tmploc += pgbuffertime; /* start time for gzrf1trap2 */
+		TRAPEZOID(ZGRAD, gzrf1trap2, tmploc + pw_gzrf1trap2a, 3200, 0, loggrd);
+		fprintf(stderr, "\tstart: %dus, ", tmploc);
+		tmploc += pw_gzrf1trap2a + pw_gzrf1trap2 + pw_gzrf1trap2d; /* end time for gzrf1trap2 pulse */
+		fprintf(stderr, " end: %dus\n", tmploc);
+	}
+	
 	tmploc += pgbuffertime;
 
 	fprintf(stderr, "pulsegen(): finalizing rf1 core...\n");
