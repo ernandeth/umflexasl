@@ -1536,7 +1536,7 @@ STATUS predownload( void )
 			minesp += pgbuffertime;
 			minesp += pw_gzrf1trap1a + pw_gzrf1trap1 + pw_gzrf1trap1d; /* pre-rf crusher */
 			minesp += pgbuffertime;
-			minesp += pw_gzrf1a + pw_gzrf1; /* 1st half of rf1 pulse */
+			minesp += pw_gzrf1a/2 + pw_gzrf1; /* 1st half of rf1 pulse */
 
 			/* calculate minimum TE (time from center of rf0 to center of readout pulse) */
 			minte += pw_gzrf0/2 + pw_gzrf0d; /* 2nd half of rf0 pulse */
@@ -1554,16 +1554,27 @@ STATUS predownload( void )
 			minte += TIMESSI; /* inter-core time */
 			minte += pgbuffertime;
 			minte += (flowcomp_flag == 1 && spi_mode == 0)*(pw_gzfca + pw_gzfc + pw_gzfcd + pgbuffertime); /* flow comp pre-phaser */
-			minte += (spi_mode == 0) * (pw_gzw1a + pw_gzw1 + pw_gzw1d + pgbuffertime); /* z rewind gradient */
+			minte += (spi_mode == 0) * (pw_gzw1a + pw_gzw1 + pw_gzw1d + pgbuffertime); /* SOS z encode gradient */
 			minte += pw_gxw/2; /* first half of spiral readout */
 
 			/* calculate deadtimes */
 			deadtime1_seqcore = (opte - minesp)/2;
 			deadtime1_seqcore -= (flowcomp_flag == 1 && spi_mode == 0)*(pw_gzfca + pw_gzfc + pw_gzfcd + pgbuffertime); /* adjust for flowcomp symmetry */
-			minte += deadtime1_seqcore;
+			/* minte += deadtime1_seqcore; */
 			deadtime2_seqcore = (opte - minesp)/2; 
 			deadtime2_seqcore += (flowcomp_flag == 1 && spi_mode == 0)*(pw_gzfca + pw_gzfc + pw_gzfcd + pgbuffertime);		
-			deadtime_rf0core = opte - minte;
+			
+			deadtime_rf0core = opte/2 - (pw_gzrf0/2 + pw_gzrf0d);
+			deadtime_rf0core -= pgbuffertime;
+			deadtime_rf0core -= (pw_gzrf0ra + pw_gzrf0r + pw_gzrf0rd) ;
+			deadtime_rf0core -= pgbuffertime;
+			deadtime_rf0core -= TIMESSI;
+			deadtime_rf0core -= pgbuffertime;
+			deadtime_rf0core -= (pw_gzrf1trap1a + pw_gzrf1trap1 + pw_gzrf1trap1d)
+			deadtime_rf0core -= pgbuffertime;
+			deadtime_rf0core -= (pw_gzrf1/2 + pw_gzrf0d);
+		
+
 
 			minte = (int)fmax(minte, minesp);
 			minesp = 0; /* no restriction on esp cv - let opte control the echo spacing */
