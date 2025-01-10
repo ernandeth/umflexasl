@@ -251,7 +251,7 @@ int pcasl_tbgs2 = 0 with {0, , 0, VIS, "PCASL prep  : (us) 2nd background suppre
 int		pcasl_flag = 0; /* when this is turned to 1, prep1 pulse gets replaced with a PCASL pulse*/
 
 int		pcasl_calib = 0 with {0, 1 , 0, VIS, "do PCASL phase calibration?",};
-int		pcasl_calib_frames = 4 with {0, , 100, VIS, "N. frames per phase increment",};
+int		pcasl_calib_frames = 2 with {0, , 100, VIS, "N. frames per phase increment",};
 int		pcasl_calib_cnt = 0;
 float 	phs_cal_step = 0.0;
 
@@ -268,12 +268,12 @@ int		pcasl_delta_phs_dac = 0;
 int 	pcasl_RFdur = 500us;
 float 	pcasl_Gamp =  0.6;  /* slice select lobe for PCASL RF pulse G/cm .... Lizhao paper: 0.35
 								Jahanian used 0.6*/
-float	pcasl_Gave = 0.04;  /* average gradient for each pulse in the train.  LiZhao paper: 0.05 
+float	pcasl_Gave = 0.06;  /* average gradient for each pulse in the train.  LiZhao paper: 0.05 
 								Jahanian used 0.039- eASL uses 0.7 / 0.07 */
 float	pcasl_Gref_amp;     /* refocuser gradient */
 int		pcasl_tramp =  120us; 
 int		pcasl_tramp2 =  120us; 
-float	pcasl_distance = 10.0; /*cm - distance from the iso-center */
+float	pcasl_distance = 12.0; /*cm - distance from the iso-center */
 float	pcasl_distance_adjust; /*cm - distance from the iso-center after table movement */
 float	pcasl_RFfreq;
 
@@ -3283,7 +3283,7 @@ STATUS scan( void )
 		*/
 		if (pcasl_flag	&& pcasl_calib) {
 			nm0frames = 0;
-			phs_cal_step = 2.0*M_PI / (float)(nframes) / (float)(pcasl_calib_frames);
+			phs_cal_step = 2.0*M_PI / (float)(nframes) * (float)(pcasl_calib_frames);
 
 			fprintf(stderr, "\nscan(): Phase calibration counter: %d \n", pcasl_calib_cnt); 
 			
