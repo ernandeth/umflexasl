@@ -193,7 +193,7 @@ int flowcomp_flag = 0 with {0, 1, 0, VIS, "option to use flow-compensated slice 
 int rf1_b1calib = 0 with {0, 1, 0, VIS, "option to sweep B1 amplitudes across frames from 0 to nominal B1 for rf1 pulse",};
 
 int pgbuffertime = 248 with {100, , 248, VIS, "gradient IPG buffer time (us)",};
-int pcasl_buffertime = 100 with {0, , 248, VIS, "PCASL core - gradient IPG buffer time (us)",};
+int pcasl_buffertime = 0 with {0, , 248, VIS, "PCASL core - gradient IPG buffer time (us)",};/* used to be 100 */
 float crushfac = 2.0 with {0, 10, 0, VIS, "crusher amplitude factor (a.k.a. cycles of phase/vox; dk_crush = crushfac*kmax)",};
 int kill_grads = 0 with {0, 1, 0, VIS, "option to turn off readout gradients",};
 
@@ -255,20 +255,21 @@ int		pcasl_calib_frames = 4 with {0, , 100, VIS, "N. frames per phase increment"
 int		pcasl_calib_cnt = 0;
 float 	phs_cal_step = 0.0;
 
-int		pcasl_period = 1500; /* (us) duration of one of the PCASL 'units' 
-								Li Zhao paper used 1200 - I really want it to shrink it to 1000*/ 
+int		pcasl_period = 1200; /* (us) duration of one of the PCASL 'units' 
+					(here it was 1500 originally))	
+					Li Zhao paper used 1200 - I really want it to shrink it to 1000*/ 
 int 	pcasl_Npulses = 1700;
 int 	pcasl_RFamp_dac = 0;
 float 	pcasl_RFamp = 20;   /*mGauss-  Li Zhao paper used 18 mGauss-is an ~8 deg flip for a 0.5ms hanning
 								Jahanian used ~80 mG (~35 deg.) */
 float 	pcasl_delta_phs = 0;
-float 	pcasl_delta_phs_correction = 0.0;  /* this is about typical */
+float 	pcasl_delta_phs_correction = 0;  /* this is about typical */
 int		pcasl_delta_phs_dac = 0;
 int 	pcasl_RFdur = 500us;
-float 	pcasl_Gamp =  0.7;  /* slice select lobe for PCASL RF pulse G/cm .... Lizhao paper: 0.35
+float 	pcasl_Gamp =  0.6;  /* slice select lobe for PCASL RF pulse G/cm .... Lizhao paper: 0.35
 								Jahanian used 0.6*/
-float	pcasl_Gave = 0.07;  /* average gradient for each pulse in the train.  LiZhao paper: 0.05 
-								Jahanian used 0.39 */
+float	pcasl_Gave = 0.04;  /* average gradient for each pulse in the train.  LiZhao paper: 0.05 
+								Jahanian used 0.039- eASL uses 0.7 / 0.07 */
 float	pcasl_Gref_amp;     /* refocuser gradient */
 int		pcasl_tramp =  120us; 
 int		pcasl_tramp2 =  120us; 
@@ -1560,7 +1561,7 @@ STATUS predownload( void )
 			deadtime1_seqcore = (opte - minesp)/2;
 			deadtime1_seqcore -= (flowcomp_flag == 1 && spi_mode == 0)*(pw_gzfca + pw_gzfc + pw_gzfcd + pgbuffertime); /* adjust for flowcomp symmetry */
 			minte += deadtime1_seqcore;
-			deadtime2_seqcore = (opte - minesp)/2;
+			deadtime2_seqcore = (opte - minesp)/2; 
 			deadtime2_seqcore += (flowcomp_flag == 1 && spi_mode == 0)*(pw_gzfca + pw_gzfc + pw_gzfcd + pgbuffertime);		
 			deadtime_rf0core = opte - minte;
 
@@ -2673,8 +2674,8 @@ int play_pcasl(int type,  int tbgs1, int tbgs2, int pld) {
 		/* fprintf(stderr, "\tplay_pcasl(): pulse phase %f (rads)...\n", tmpPHI );*/
 		/* set the phase of the blips incrementing phase each time - previously calculated*/
 		
-		/* setiphase(pcasl_iphase_tbl[i], &rfpcasl,0); */
-		setiphase(-pcasl_iphase_tbl[i], &rfpcasl,0);
+		setiphase(pcasl_iphase_tbl[i], &rfpcasl,0);
+		/*setiphase(-pcasl_iphase_tbl[i], &rfpcasl,0);*/
 		 
 		/*
 	    tmpPHI = atan2 (sin(tmpPHI), cos(tmpPHI));     
@@ -2750,7 +2751,7 @@ int play_pcasl(int type,  int tbgs1, int tbgs2, int pld) {
 }
 
 /* LHG 12/6/12 : compute the linear phase increment of the PCASL pulses - NOT USED currently*/
-int calc_pcasl_phases(int *iphase_tbl, float  myphase_increment, int nreps)
+int update_pcasl_phases(int *iphase_tbl, float  myphase_increment, int nreps)
 {
 	int     n;
 	double  rfphase; 
@@ -2945,6 +2946,7 @@ ill target different velocities on different frames of the time series */
 STATUS prescanCore() {
 
 	int ttotal; 
+	float arf1_var = 0.0;
 
 	/* initialize the rotation matrix */
 	setrotate( tmtx0, 0 );
@@ -2985,7 +2987,7 @@ STATUS prescanCore() {
 		}
 
 
-		if (ro_type == 1) { /* FSE - play 90 */
+		if (ro_type == 1) { /* FSE - play 90 deg. pulse with 0 phase */
 			fprintf(stderr, "prescanCore(): playing 90deg FSE tipdown for prescan iteration %d...\n", view);
 			ttotal += play_rf0(0);
 		}	
@@ -3016,7 +3018,43 @@ STATUS prescanCore() {
 				fprintf(stderr, "prescanCore(): loaddab(&echo1, 0, 0, 0, %d, DABOFF, PSD_LOAD_DAB_ALL)...\n", view);
 				loaddab(&echo1, 0, 0, DABSTORE, view, DABON, PSD_LOAD_DAB_ALL);
 			}
+		
+			if (ro_type == 1){ 
+				/* FSE - CPMG */
+				/* For FSE case, include variable flip angle refocusers
+				The default is to use a constant refocuser flip angle*/
+				
+				arf1_var = a_rf1;
 			
+				if (echon==0){
+					/*using a "stabilizer" for the first of the echoes in the train
+						flip[0] = 90 + (vflip)/2         
+					the rest of them are whatever the refocuser flip angle is: 
+						flip[n] = vflip            
+					eg1: 
+						90x - 150y - 120y - 120y -120y ...
+					eg2: 
+						90x - 180y - 180y - 180y -180y ...  */
+
+					arf1_var = a_rf0 + a_rf1/2;
+				}
+				if(varflip) {
+					/* variable flip angle refocuser pulses to get more signal 
+					- linearly increasing schedule */
+					arf1_var = a_rf1 + (float)echon*(arf180 - a_rf1)/(float)(opetl-1); 
+					
+					/* in VFA, the first refocusers are higher - trying to approximate that here*/
+					if(echon==0) arf1_var = (arf180 + a_rf1)/2.0;
+						
+				}
+
+			
+				/* set the transmitter gain after the adjustments */
+				setiamp(arf1_var * MAX_PG_WAMP, &rf1,0);
+				fprintf(stderr,"\nadjusting var flip ang: %f (arf180=%f)", arf1_var, arf180 ); 
+			
+			}
+		
 			fprintf(stderr, "prescanCore(): Playing flip pulse for prescan iteration %d...\n", view);
 			ttotal += play_rf1(90*(ro_type == 1));
 
@@ -3148,7 +3186,7 @@ STATUS scan( void )
 		fprintf(stderr, "scan(): playing TR deadtime for disdaq train %d (t = %d / %.0f us)...\n", disdaqn, ttotal, pitscan);
 		ttotal += play_deadtime(optr - opetl * (dur_rf1core + TIMESSI + dur_seqcore + TIMESSI));
 		
-		if (ro_type == 1) { /* FSE - play 90 */
+		if (ro_type == 1) { /* FSE - play 90 deg. with 0 phase*/
 			fprintf(stderr, "scan(): playing 90deg FSE tipdown for disdaq train %d (t = %d / %.0f us)...\n", disdaqn, ttotal, pitscan);
 			play_rf0(0);
 		}	
@@ -3252,7 +3290,7 @@ STATUS scan( void )
 			if (pcasl_calib_cnt == pcasl_calib_frames ){
 				fprintf(stderr, "\n\n scan() CALIBRATION: updating PCASL linear phase increment: %f (rads) and phase table\n\n", pcasl_delta_phs);
 				pcasl_delta_phs += phs_cal_step;				
-				calc_pcasl_phases(pcasl_iphase_tbl, pcasl_delta_phs, MAXPCASLSEGMENTS);
+				update_pcasl_phases(pcasl_iphase_tbl, pcasl_delta_phs, MAXPCASLSEGMENTS);
 				pcasl_calib_cnt = 0;
 			}
 			pcasl_calib_cnt++;
@@ -3405,11 +3443,16 @@ STATUS scan( void )
 
 							arf1_var = a_rf0 + a_rf1/2;
 						}
+						
 						if(varflip) {
 							/* variable flip angle refocuser pulses to get more signal 
 							- linearly increasing schedule */
 							arf1_var = a_rf1 + (float)echon*(arf180-a_rf1)/(float)(opetl-1); 
+
+							/* in VFA, the first refocusers are higher - trying to approximate that here*/
+							if(echon==0) arf1_var = (arf180 + a_rf1)/2.0;
 						}
+
 					
 						/* set the transmitter gain after the adjustments */
 						setiamp(arf1_var * MAX_PG_WAMP, &rf1,0);
