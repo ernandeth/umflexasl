@@ -1570,7 +1570,7 @@ STATUS predownload( void )
 			deadtime_rf0core -= pgbuffertime;
 			deadtime_rf0core -= TIMESSI;
 			deadtime_rf0core -= pgbuffertime;
-			deadtime_rf0core -= (pw_gzrf1trap1a + pw_gzrf1trap1 + pw_gzrf1trap1d)
+			deadtime_rf0core -= (pw_gzrf1trap1a + pw_gzrf1trap1 + pw_gzrf1trap1d);
 			deadtime_rf0core -= pgbuffertime;
 			deadtime_rf0core -= (pw_gzrf1/2 + pw_gzrf0d);
 		
