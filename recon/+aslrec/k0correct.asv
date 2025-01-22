@@ -22,9 +22,9 @@ function kdata = k0correct(kdata, klocs, options)
 klocs = squeeze(klocs(:,1,:));
 
 R = sqrt(sum(klocs.^2, 2));
-k0inds = find(R==0);
+k0inds = find(R<5e-6);
 % Use only the middle part of the segment
-k0inds = k0inds(2:end-1);
+k0inds = k0inds(end/2-25:end/2+25);
 
 fprintf('\nExecuting k0 correction %d \n', options);
 
@@ -38,7 +38,7 @@ for c=1:Ncoils
     for f=1:Nframes
 
         % use the second view of each frame as the reference
-        tmp = kdata(:,1,f,c);
+        tmp = kdata(:,2,f,c);
         baseline = mean(tmp(k0inds));
 
         if options==2
@@ -55,20 +55,13 @@ for c=1:Ncoils
                 vm = 1*exp(i*angle(vm));
             end
 
-            tmp2 = tmp * baseline / vm  ;
-%{
-            [v f c]
-            plot(abs(tmp)); hold on
-            plot(abs(tmp2)); hold off
-            baseline
-            vm 
-            pause
-%}
-            kdata(:,v,f,c) = tmp2;
+            tmp = tmp * baseline / vm  ;
+
+            
+            kdata(:,v,f,c) = tmp;
             
         end
     end
 end
-
 
 return
