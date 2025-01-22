@@ -1,0 +1,25 @@
+#!/bin/bash
+
+# Base directory containing the subdirectories
+BASE_DIR="."
+
+# Starting number for the links
+START_NUM=50000
+
+# Loop through each subdirectory named Plan*
+for SUBDIR in "$BASE_DIR"/Plan*/; do
+    # Check if the directory exists and is a directory
+    if [ -d "$SUBDIR" ]; then
+        # Remove the trailing slash
+        SUBDIR=${SUBDIR%/}
+
+        # Create a symbolic link with the current number
+        ln -s "$SUBDIR" "$BASE_DIR/$START_NUM"
+
+        # Increment the number
+        START_NUM=$((START_NUM + 1))
+    fi
+done
+
+echo "Symbolic links have been created."
+
