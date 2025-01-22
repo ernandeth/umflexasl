@@ -57,9 +57,9 @@
 
 /* Define important values */
 #define MAXWAVELEN 50000 /* Maximum wave length for gradients */
-#define MAXNSHOTS 512 /* Maximum number of echo trains per frame */
-#define MAXNECHOES 512 /* Maximum number of echoes per echo train */
-#define MAXNFRAMES 1000 /* Maximum number of temporal frames */
+#define MAXNSHOTS 48 /* Maximum number of echo trains per frame */
+#define MAXNECHOES 64 /* Maximum number of echoes per echo train */
+#define MAXNFRAMES 500 /* Maximum number of temporal frames */
 #define MAXITR 50 /* Maximum number of iterations for iterative processes */
 #define GAMMA 26754 /* Gyromagnetic ratio (rad/s/G) */
 #define TIMESSI 120 /* SSP instruction time */
@@ -105,7 +105,15 @@ int acq_len = 4000;
 int acq_offset = 50;
 
 /* Declare table of readout gradient transformation matrices */
-long tmtxtbl[MAXNSHOTS*MAXNECHOES][9];
+long tmtxtbl[MAXNSHOTS*MAXNECHOES*MAXNFRAMES][9];
+float Tex[MAXNSHOTS*MAXNECHOES*MAXNFRAMES][9];
+
+/* rotation matrices for the VS pulses*/	
+float R0[9];
+float R[9]; 
+float Rp[9];
+long rotmat0[9];
+long prep_rotmat[9];
 
 /* Declare ASL prep pulse variables */
 int prep1_len = 5000;
@@ -126,10 +134,16 @@ int prep2_grad_ctl[MAXWAVELEN];
 
 /* allocate space for PCASL pulse train phases */
 int pcasl_iphase_tbl[MAXPCASLSEGMENTS];
-int pcasl_tbgs1tbl[MAXPCASLSEGMENTS];
-int pcasl_tbgs2tbl[MAXPCASLSEGMENTS];
-int pcasl_lbltbl[MAXPCASLSEGMENTS];
-int pcasl_pldtbl[MAXPCASLSEGMENTS];
+
+/* Allocate space and intialize table with values as if it were not MRF */
+float mrf_deadtime[MAXNFRAMES];
+float mrf_prep1_pld[MAXNFRAMES];
+float mrf_prep2_pld[MAXNFRAMES];
+float mrf_pcasl_pld[MAXNFRAMES];
+float mrf_pcasl_duration[MAXNFRAMES];
+int mrf_prep1_type[MAXNFRAMES];
+int mrf_prep2_type[MAXNFRAMES];
+int mrf_pcasl_type[MAXNFRAMES];
 
 /* Declare receiver and Tx frequencies */
 float recfreq;
@@ -156,7 +170,7 @@ float xmitfreq;
 
 int numdda = 4;			/* For Prescan: # of disdaqs ps2*/
 
-float SLEWMAX = 12500.0 with {1000, 25000.0, 12500.0, VIS, "maximum allowed slew rate (G/cm/s)",};
+float SLEWMAX = 15000.0 with {1000, 25000.0, 12500.0, VIS, "maximum allowed slew rate (G/cm/s)",};
 float GMAX = 4.0 with {0.5, 5.0, 4.0, VIS, "maximum allowed gradient (G/cm)",};
 
 /* readout cvs */
@@ -178,15 +192,17 @@ int rfspoil_flag = 1 with {0, 1, 1, VIS, "option to do RF phase cycling (117deg 
 int flowcomp_flag = 0 with {0, 1, 0, VIS, "option to use flow-compensated slice select gradients",};
 int rf1_b1calib = 0 with {0, 1, 0, VIS, "option to sweep B1 amplitudes across frames from 0 to nominal B1 for rf1 pulse",};
 
-int pgbuffertime = 248 with {100, , 248, INVIS, "gradient IPG buffer time (us)",};
-int pcasl_buffertime = 100 with {0, , 248, INVIS, "PCASL core - gradient IPG buffer time (us)",};
+int pgbuffertime = 248 with {100, , 248, VIS, "gradient IPG buffer time (us)",};
+int pcasl_buffertime = 100 with {0, , 248, VIS, "PCASL core - gradient IPG buffer time (us)",};
 float crushfac = 2.0 with {0, 10, 0, VIS, "crusher amplitude factor (a.k.a. cycles of phase/vox; dk_crush = crushfac*kmax)",};
 int kill_grads = 0 with {0, 1, 0, VIS, "option to turn off readout gradients",};
 
 /* Trajectory cvs */
 int nnav = 250 with {0, 1000, 250, VIS, "number of navigator points in spiral",};
-int narms = 1 with {1, 1000, 1, VIS, "number of spiral arms",};
-int spi_mode = 0 with {0, 2, 0, VIS, "SOS (0), TGA (1), or 3DTGA (2)",};
+int narms = 1 with {1, 1000, 1, VIS, "number of spiral arms - in SOS, this is interleaves/shots",};
+int spi_mode = 2 with {0, 4, 0, VIS, "SOS (0), TGA (1), 3DTGA (2) rotmats from File (3) traj AND rotmats from file (4)",};
+int grad_id = 13; /* file ID for arbitrary gradients and rotation matrices*/
+float grad_scale = 1.0;  /* scaling factor for the arbitrary gradients - for safety and troubleshooting*/
 float kz_acc = 1.0 with {1, 100.0, 1.0, VIS, "kz acceleration (SENSE) factor (for SOS only)",};
 float vds_acc0 = 1.0 with {0.001, 50.0, 1.0, VIS, "spiral center oversampling factor",};
 float vds_acc1 = 1.0 with {0.001, 50.0, 1.0, VIS, "spiral edge oversampling factor",};
@@ -204,7 +220,7 @@ int zero_ctl_grads = 0 with {0, 1, 0, VIS, "option to zero out control gradients
 int prep1_id = 0 with {0, , 0, VIS, "ASL prep pulse 1: ID number (0 = no pulse)",};
 int prep1_pld = 0 with {0, , 0, VIS, "ASL prep pulse 1: post-labeling delay (us; includes background suppression)",};
 float prep1_rfmax = 234 with {0, , 0, VIS, "ASL prep pulse 1: maximum RF amplitude",};
-float prep1_gmax = 1.5 with {0, , 3, VIS, "ASL prep pulse 1: maximum gradient amplitude",};
+float prep1_gmax = 1.5 with {-4.0, 4.0 , 1.5, VIS, "ASL prep pulse 1: maximum gradient amplitude",};
 int prep1_mod = 1 with {1, 4, 1, VIS, "ASL prep pulse 1: labeling modulation scheme (1 = label/control, 2 = control/label, 3 = always label, 4 = always control)",};
 int prep1_tbgs1 = 0 with {0, , 0, VIS, "ASL prep pulse 1: 1st background suppression delay (0 = no pulse)",};
 int prep1_tbgs2 = 0 with {0, , 0, VIS, "ASL prep pulse 1: 2nd background suppression delay (0 = no pulse)",};
@@ -220,6 +236,10 @@ int prep2_tbgs1 = 0 with {0, , 0, VIS, "ASL prep pulse 2: 1st background suppres
 int prep2_tbgs2 = 0 with {0, , 0, VIS, "ASL prep pulse 2: 2nd background suppression delay (0 = no pulse)",};
 int prep2_tbgs3 = 0 with {0, , 0, VIS, "ASL prep pulse 2: 3rd background suppression delay (0 = no pulse)",};
 int prep2_b1calib = 0 with {0, 1, 0, VIS, "ASL prep pulse 2: option to sweep B1 amplitudes across frames from 0 to nominal B1",};
+int prep2_Npoints = 0 ;
+
+/* Velocity Selective prep pulse axis*/
+int prep_axis = 0;
 
 /* Declare PCASL variables (cv)*/
 int pcasl_pld 	= 1500*1e3 with {0, , 0, VIS, "PCASL prep  : (ms) post-labeling delay ( includes background suppression)",};
@@ -228,33 +248,41 @@ int pcasl_mod 	= 1 with {1, 4, 1, VIS, "PCASL prep  : labeling modulation scheme
 int pcasl_tbgs1 = 0 with {0, , 0, VIS, "PCASL prep  : (us) 1st background suppression delay (0 = no pulse)",};
 int pcasl_tbgs2 = 0 with {0, , 0, VIS, "PCASL prep  : (us) 2nd background suppression delay (0 = no pulse)",};
 
-int	pcasl_flag = 1; /* when this is turned to 1, prep1 pulse gets replaced with a PCASL pulse*/
-int	pcasl_calib = 0 with {0, 1 , 0, VIS, "do PCASL phase calibration?",};
-int	pcasl_calib_frames = 4 with {0, , 100, VIS, "N. frames per phase increment",};
-float 	phs_cal_step = 0;
-int	pcasl_period = 1200; /* (us) duration of one of the PCASL 'units' - I really want it to be 1000*/ 
+int		pcasl_flag = 0; /* when this is turned to 1, prep1 pulse gets replaced with a PCASL pulse*/
+
+int		pcasl_calib = 0 with {0, 1 , 0, VIS, "do PCASL phase calibration?",};
+int		pcasl_calib_frames = 4 with {0, , 100, VIS, "N. frames per phase increment",};
+int		pcasl_calib_cnt = 0;
+float 	phs_cal_step = 0.0;
+
+int		pcasl_period = 1500; /* (us) duration of one of the PCASL 'units' 
+								Li Zhao paper used 1200 - I really want it to shrink it to 1000*/ 
 int 	pcasl_Npulses = 1700;
 int 	pcasl_RFamp_dac = 0;
-float 	pcasl_RFamp = 40;   /*mGauss-  Li Zhao paper used 20 mGauss-is an ~8 deg flip for a 0.5ms hanning**/
+float 	pcasl_RFamp = 20;   /*mGauss-  Li Zhao paper used 18 mGauss-is an ~8 deg flip for a 0.5ms hanning
+								Jahanian used ~80 mG (~35 deg.) */
 float 	pcasl_delta_phs = 0;
 float 	pcasl_delta_phs_correction = 0.0;  /* this is about typical */
-int	pcasl_delta_phs_dac = 0;
+int		pcasl_delta_phs_dac = 0;
 int 	pcasl_RFdur = 500us;
-float 	pcasl_Gamp =  0.35;  /* slice select lobe for PCASL RF pulse G/cm .... Lizhao paper: 0.35*/
-float	pcasl_Gave = 0.05;  /* average gradient for each pulse in the train.  LiZhao paper: 0.05 */
+float 	pcasl_Gamp =  0.7;  /* slice select lobe for PCASL RF pulse G/cm .... Lizhao paper: 0.35
+								Jahanian used 0.6*/
+float	pcasl_Gave = 0.07;  /* average gradient for each pulse in the train.  LiZhao paper: 0.05 
+								Jahanian used 0.39 */
 float	pcasl_Gref_amp;     /* refocuser gradient */
-int	pcasl_tramp =  120us; 
-int	pcasl_tramp2 =  120us; 
+int		pcasl_tramp =  120us; 
+int		pcasl_tramp2 =  120us; 
 float	pcasl_distance = 10.0; /*cm - distance from the iso-center */
 float	pcasl_distance_adjust; /*cm - distance from the iso-center after table movement */
 float	pcasl_RFfreq;
 
 /* adding velocity selectivity shift to the VSI pulses (optional)*/
-int	doVelSpectrum=0;
-float	vel_target = 0.0;
-int	vel_sweep = 0;
-int	vel_sweep_frames = 2;
-float	vel_target_incr = 0.0;
+int		doVelSpectrum = 0 with {0,2,0, VIS, "Velocity Spectrum imaging: nothing(0) FTVS velocity target sweep (1) BIR8 velocity encoding gradient(2)"};  /* sweep velocity target in FTVS pulses (change the phase)*/
+float	vel_target = 0.0 /* use for FTVS case */;
+float   vspectrum_grad = -4.0;  /* use this for BIR8 */
+int		vspectrum_Navgs = 2;
+float	vel_target_incr = 1.0;
+float   prep1_delta_gmax = 0.1 ;
 int	min_dur_pcaslcore = 0;
 int	zero_CTL_grads = 0; /* option to use zero gradients for the control pulses */
 
@@ -282,6 +310,14 @@ int obl_method = 0 with {0, 1, 0, INVIS, "On(=1) to optimize the targets based o
 int debug = 0 with {0,1,0,INVIS,"1 if debug is on ",};
 float echo1bw = 16 with {,,,INVIS,"Echo1 filter bw.in KHz",};
 
+/*MRF mode features*/
+int mrf_mode = 0;
+int mrf_sched_id = 1;
+float prev_theta = 0.0;  /* rotation angles from last frame */
+float prev_phi = 0.0;    /* rotation angles from last frame */
+
+
+
 @host
 /*********************************************************************
  *                     UMVSASL.E HOST SECTION                        *
@@ -307,8 +343,8 @@ float echo1bw = 16 with {,,,INVIS,"Echo1 filter bw.in KHz",};
 @inline loadrheader.e rheaderhost
 
 /** Load PSD Header **/
-abstract("umvsasl sequence");
-psdname("umvsasl");
+abstract("umflexasl sequence");
+psdname("umflexasl");
 
 int num_conc_grad = 3;          /* always three for grass 	*/
 int entry;
@@ -343,26 +379,42 @@ float calc_sinc_B1(float cyc_rf, int pw_rf, float flip_rf);
 float calc_hard_B1(int pw_rf, float flip_rf);
 int write_scan_info();
 
-/* declare function prototypes for PCASL functions */ 
+/* function to fetch radout gradients from file */
+int readGrads(int id, float scale);
+
+/* currently unusued */
 int make_pcasl_schedule(
 		int *pcasl_lbltbl, 
 		int *pcasl_pldtbl, 
 		int *pcasl_tbgs1tbl, 
 		int *pcasl_tbgs2tbl);
 
-int init_pcasl_phases(
+int calc_pcasl_phases(
 		int *iphase_tbl, 
 		float  myphase_increment, 
 		int nreps);
 
-/* int calc_prep_phs_from_velocity (
-	int* prep_pulse_mag, 
-	int* prep_pulse_phs, 
-	int* prep_pulse_grad, 
-	float vel_target, 
-	int vsi_train_len, 
-	double vsi_Gmax);
-*/
+/* declare MRF related functions*/
+int init_mrf(
+	float 	*mrf_deadtime, 
+	int 	*mrf_pcasl_type,
+	float 	*mrf_pcasl_duration,
+	float 	*mrf_pcasl_pld,
+	int 	*mrf_prep1_type,
+	float 	*mrf_prep1_pld, 
+	int 	*mrf_prep2_type,
+	float 	*mrf_prep2_pld);
+
+int read_mrf_fromfile(
+	int 	file_id, 
+	float 	*mrf_deadtime, 
+	int 	*mrf_pcasl_type,
+	float 	*mrf_pcasl_duration,
+	float 	*mrf_pcasl_pld,
+	int 	*mrf_prep1_type,
+	float 	*mrf_prep1_pld, 
+	int 	*mrf_prep2_type_pld,
+	float 	*mrf_prep2_pld);
 
 @inline Prescan.e PShostVars            /* added with new filter calcs */
 
@@ -606,11 +658,11 @@ STATUS cveval( void )
 
 	if (kill_grads == 0) /* only if spirals are on */
 		piuset += use10;
-	cvdesc(opuser10, "SPI mode: (0) SOS, (1) 2DTGA, (2) 3DTGA");
-	cvdef(opuser10, 0);
+	cvdesc(opuser10, "SPI mode: (0) SOS, (1) 2DTGA, (2) 3DTGA, (3)use myrotmats.txt file (4) use both myrotmats and grad files");
+	cvdef(opuser10, 2);
 	opuser10 = spi_mode;
 	cvmin(opuser10, 0);
-	cvmax(opuser10, 2);	
+	cvmax(opuser10, 3);	
 	spi_mode = opuser10;
 	
 	if (kill_grads == 0 && spi_mode == 0) /* only if spirals are on & SOS*/
@@ -706,7 +758,7 @@ STATUS cveval( void )
 	cvdesc(opuser21, "Prep 1 max G amp (G/cm)");
 	cvdef(opuser21, 0);
 	opuser21 = prep1_gmax;
-	cvmin(opuser21, 0);
+	cvmin(opuser21, -GMAX);
 	cvmax(opuser21, GMAX);	
 	prep1_gmax = opuser21;
 	
@@ -889,7 +941,7 @@ STATUS cveval( void )
 	opuser41 = pcasl_distance*10;
 	cvmin(opuser41, 0);
 	cvmax(opuser41, 500);	
-	pcasl_distance = opuser41/10.0;
+	pcasl_distance = opuser41/10.0;  /* cm */
 
 	piuset2 += use42;
 	cvdesc(opuser42, "Num. M0 frames (no label or BGS)");
@@ -956,6 +1008,7 @@ STATUS predownload( void )
 	float tmp_a, tmp_area;
 	float mom1;
 	int ctr = 0;
+	int i;
 
 	/*********************************************************************/
 #include "predownload.in"	/* include 'canned' predownload code */
@@ -984,6 +1037,7 @@ STATUS predownload( void )
 		epic_error(use_ermes,"failure to read in ASL prep 2 pulse", EM_PSD_SUPPORT_FAILURE, EE_ARGS(0));
 		return FAILURE;
 	}
+	prep2_Npoints = prep2_len;
 	
 	/* update presat pulse parameters */
 	pw_rfps1 = 1ms; /* 1ms hard pulse */
@@ -1139,6 +1193,10 @@ STATUS predownload( void )
 	a_prep2rhoctl = prep2_b1 / maxB1Seq;
 	ia_prep2rhoctl = a_prep2rhoctl * MAX_PG_WAMP;
 	
+	if (doVelSpectrum==2){
+		fprintf(stderr, "predownload(): doVelspectrum=2 -> setting the first prep1_gmax to -4.0\n");
+		vspectrum_grad = -4.0;
+	}
 	/* Update the asl prep pulse gradients */
 	a_prep1gradlbl = (prep1_id > 0) ? (prep1_gmax) : (0);
 	ia_prep1gradlbl = (int)ceil(a_prep1gradlbl / ZGRAD_max * (float)MAX_PG_WAMP);
@@ -1182,9 +1240,10 @@ STATUS predownload( void )
 	min_dur_pcaslcore =  
                  pw_gzpcasl + pw_gzpcasla + pw_gzpcasld 
                  + pw_gzpcaslref+ pw_gzpcaslrefa + pw_gzpcaslrefd
-                 + 3*pcasl_buffertime ;
+                 + 3*pcasl_buffertime 
+				 + TIMESSI;
 
-	deadtime_pcaslcore = pcasl_period - TIMESSI - min_dur_pcaslcore; 
+	deadtime_pcaslcore = pcasl_period  - min_dur_pcaslcore; 
 	dur_pcaslcore = min_dur_pcaslcore + deadtime_pcaslcore;
 	fprintf(stderr, "predownload(): min_dur_pcaslcore: %d \n", min_dur_pcaslcore);  
 	fprintf(stderr, "predownload(): dur_pcaslcore: %d \n", dur_pcaslcore);  
@@ -1193,8 +1252,8 @@ STATUS predownload( void )
 		/* recalculate PCASL timings without any deadtime in the pcaslcore*/
 		deadtime_pcaslcore = 0;
 		dur_pcaslcore = min_dur_pcaslcore;
-		pcasl_period = dur_pcaslcore + TIMESSI;
-		pcasl_Npulses = round(pcasl_duration/pcasl_period);
+		pcasl_period = dur_pcaslcore;
+		pcasl_Npulses = (int)floor(pcasl_duration/pcasl_period);
 		pcasl_duration = pcasl_period * pcasl_Npulses;
 
 		fprintf(stderr, "\npredownload(): _WARNING_: pcasl_period too short ... ");  
@@ -1205,9 +1264,6 @@ STATUS predownload( void )
 		fprintf(stderr, "\n changing  deadtime_pcaslcore: %d \n", deadtime_pcaslcore);  
 	}	
 	 
-	fprintf(stderr, "predownload(): calling make_pcasl_schedule() \n");
-	make_pcasl_schedule(pcasl_lbltbl, pcasl_pldtbl, pcasl_tbgs1tbl, pcasl_tbgs2tbl);
-
 	fprintf(stderr, "\npredownload(): PCASL SS gradient: %f ", pcasl_Gamp);
 	fprintf(stderr, "\npredownload(): pcasl_distance: %f", pcasl_distance);
 	/* account for the table position */
@@ -1215,7 +1271,7 @@ STATUS predownload( void )
 	fprintf(stderr, "\npredownload(): piscancenter: %f", piscancenter);
 	fprintf(stderr, "\npredownload(): pcasl_distance (adjusted) : %f", pcasl_distance_adjust);
 
-	pcasl_RFfreq = -pcasl_distance_adjust * GAMMA/2/M_PI * pcasl_Gamp ; 
+	pcasl_RFfreq = -pcasl_distance_adjust * GAMMA/2/M_PI * pcasl_Gamp ; /* Hz */
 	/* DEBUGGING:   is the piscancenter not right???? 
 	if we use the pcasl_distance_adjust here, it should also be used for 
 	the pcasl_delta_phs calculation!  */
@@ -1225,7 +1281,7 @@ STATUS predownload( void )
 	mom1 = pcasl_Gamp*(pcasl_RFdur + pcasl_tramp) ;
 	/* Gradient moment of refocuser is calculated to maintain a specific gradient moment
 	for the pcasl module.  This moment is expressed as an average gradient : pcasl_Gave 
-	mom1 and mom2 are the gradient moments of each of the lobes in the pcasl module
+	mom1 and mom2 are the gradient moments (areas) of each of the lobes in the pcasl module
 	most papers specify G_ss and G_ave, so we have to calculate the amplitude of the G_ref
 	(units of mom1 and mom2:  G/cm * us)
   
@@ -1243,8 +1299,11 @@ STATUS predownload( void )
 	fprintf(stderr, "\npredownload(): PCASL refocuser gradient ramps: %d ", pw_gzpcaslrefa);
 
 	/* calculate linear phase increment for PCASL train:
-	units: GAMMA (rad/s/G) , mom (G/cm*us) , pcasl_distance (cm) */
+	units: 
+		GAMMA (rad/s/G) , mom (G/cm*us) , pcasl_distance_adjust (cm) , 
+		pcasl_period (us), pcasl_Gave (G/cm)*/
 	pcasl_delta_phs = -GAMMA* pcasl_Gave * pcasl_period * pcasl_distance_adjust * 1e-6;
+		
 	fprintf(stderr, "\npredownload(): PCASL linear phase increment: %f radians", pcasl_delta_phs);
 
 	/* scale the  PCASL amplitude of RF pulses for the RHO channel... also in DAC units*/
@@ -1262,9 +1321,25 @@ STATUS predownload( void )
 	pcasl_delta_phs = pcasl_delta_phs + pcasl_delta_phs_correction;
 	pcasl_delta_phs = atan2( sin(pcasl_delta_phs), cos(pcasl_delta_phs));
 	fprintf(stderr, "\npredownload(): CORRECTED PCASL linear phase increment: %f (rads)", pcasl_delta_phs);
-	fprintf(stderr, "\npredownload(): calling init_pcasl_phases() to make the linear phase sweep \n");
-	init_pcasl_phases(pcasl_iphase_tbl, pcasl_delta_phs, MAXPCASLSEGMENTS);
+	fprintf(stderr, "\npredownload(): calling calc_pcasl_phases() to make the linear phase sweep \n");
+	calc_pcasl_phases(pcasl_iphase_tbl, pcasl_delta_phs, MAXPCASLSEGMENTS);
 
+
+	/* velocity spectrum default venc gradient increments - so that it goes from -4.0 to +4.0 G/cm */
+	prep1_delta_gmax = 2.0*4.0 / ((float)nframes/(float)vspectrum_Navgs -1)  ;
+
+	/* -------------------------*/
+
+	/* read MRF schedule from file */
+	if (mrf_mode ) 
+	{
+		if (read_mrf_fromfile(mrf_sched_id, mrf_deadtime, mrf_pcasl_type, mrf_pcasl_duration, mrf_pcasl_pld, mrf_prep1_type, mrf_prep1_pld, mrf_prep2_type, mrf_prep2_pld) ==0 )
+		{
+			epic_error(use_ermes,"Failure to read MRF schedule from file",EM_PSD_SUPPORT_FAILURE,1,STRING_ARG,"read_mrf_fromfile");
+			return FAILURE;
+		}
+		else fprintf(stderr, "\nSuccess reading schedule %05d", mrf_sched_id);
+	}
 	/* -------------------------*/
 	
 	/* Set the parameters for the spin echo rf1 kspace rewinder */
@@ -1356,10 +1431,19 @@ STATUS predownload( void )
 	a_gzfc = -tmp_a;
 	
 	/* generate initial spiral trajectory */
-	fprintf(stderr, "predownload(): calculating spiral gradients...\n");
-	if (genspiral() == 0) {
-		epic_error(use_ermes,"failure to generate spiral waveform", EM_PSD_SUPPORT_FAILURE, EE_ARGS(0));
-		return FAILURE;
+	if (spi_mode==4){
+		fprintf(stderr, "predownload(): reading external spiral gradients...\n");
+		if (readGrads(grad_id, grad_scale)==0){
+			epic_error(use_ermes,"failure to read external spiral waveform", EM_PSD_SUPPORT_FAILURE, EE_ARGS(0));
+			return FAILURE;	
+		}
+	}
+	else{
+		fprintf(stderr, "predownload(): calculating spiral gradients...\n");
+		if (genspiral() == 0) {
+			epic_error(use_ermes,"failure to generate spiral waveform", EM_PSD_SUPPORT_FAILURE, EE_ARGS(0));
+			return FAILURE;
+		}
 	}
 	a_gxw = XGRAD_max;
 	a_gyw = YGRAD_max;
@@ -1371,12 +1455,61 @@ STATUS predownload( void )
 	pw_gyw = GRAD_UPDATE_TIME*res_gyw;
 	
 	/* Generate view transformations */
-	fprintf(stderr, "predownload(): calculating views (transformation matrices)...\n");
+	fprintf(stderr, "predownload(): calculating views (ie-transformation matrices)...\n");
 	if (genviews() == 0) {
 		epic_error(use_ermes,"failure to generate view transformation matrices", EM_PSD_SUPPORT_FAILURE, EE_ARGS(0));
 		return FAILURE;
 	}
-	scalerotmats(tmtxtbl, &loggrd, &phygrd, opetl*opnshots*narms, 0);
+	if (mrf_mode){
+
+		scalerotmats(tmtxtbl, &loggrd, &phygrd, opetl*opnshots*narms*nframes, 0);
+	}else{
+		scalerotmats(tmtxtbl, &loggrd, &phygrd, opetl*opnshots*narms, 0);
+	}
+
+	/* uncomment this for debugging rotmats ...					
+	fprintf(stderr,"predownload(): mrf mode: rotations after scalerotmats.. %d frames\n", nframes);
+	for (i=0; i<opetl*opnshots*narms*nframes; i++ ){
+		for (ctr=0;ctr<9;ctr++){
+			fprintf(stderr,"\t%ld", tmtxtbl[i][ctr] );
+		}
+		fprintf(stderr,"\n");
+	}
+	*/
+
+	/* Generate prep pulse axis transformation matrix*/
+	fprintf(stderr, "predownload(): calculating VSASL axis rotation matrices...\n");
+	
+    for (i = 0; i < 9; i++) 
+		R0[i] = (float)rsprot[0][i] / MAX_PG_WAMP;
+    
+	orthonormalize(R0, 3, 3);
+
+	/* figure out the  right transformation matrix to alter the axis - this core only*/
+	eye(R,3); 
+	switch(prep_axis){
+		case 0:
+			eye(R,3);
+			break;
+		case 1:
+ 			/* PI/2 rotation of  <0,0,1> about the y axis should land you on the x-axis*/
+			genrotmat('y', M_PI/2.0, R); 
+			break;
+		case 2:
+			genrotmat('x', M_PI/2.0, R);
+			break;
+	}	
+
+	/* multiply original matrix by rotation*/			
+	multmat(3,3,3,R, R0, Rp); /*  Rp = R * R_0 */
+	/* convert Rp to long and scale the new rotation matrix*/
+	for (i=0; i<9; i++){
+		prep_rotmat[i] = (long)round(MAX_PG_WAMP * Rp[i]);
+		fprintf(stderr, "\t%0.2f ", Rp[i]);
+	}
+	scalerotmats(&prep_rotmat, &loggrd, &phygrd, 0, 0);
+	fprintf(stderr, "done\n");
+
 
 	/* calculate minimum echo time and esp, and corresponding deadtimes */
 	minesp = 0;
@@ -1788,6 +1921,8 @@ STATUS predownload( void )
 
 @inline Prescan.e PSpredownload	
 
+	fprintf(stderr, "\n\nEnd of Predownload()\n\n");
+
 	return SUCCESS;
 }   /* end predownload() */
 
@@ -1808,11 +1943,14 @@ STATUS predownload( void )
 #include "epicfuns.h"
 
 /* waveform pointers for real time updates in the scan loop 
-we use them for updating the phase of the prep pulse in velocity spectrum imaging*/
+we use them for updating the phase of the prep pulse in velocity spectrum imaging
+
 WF_HW_WAVEFORM_PTR 	phsbuffer1_wf;
 WF_HW_WAVEFORM_PTR 	phsbuffer2_wf;
 
-
+int* 	phsbuffer1_wf;
+int* 	phsbuffer2_wf;
+*/
 /* function to reserve memory for a dynamically updated waveform */
 void tp_wreserve(WF_PROCESSOR wfp, WF_HW_WAVEFORM_PTR *wave_addr, int n) 
 {
@@ -1831,13 +1969,25 @@ STATUS pulsegen( void )
 	fprintf(stderr, "\npulsegen(): beginning pulse generation of PCASL core\n");
 	tmploc = 0;	
 	tmploc += pcasl_buffertime;
+	tmploc += pw_gzpcasla ;
 
 	fprintf(stderr, "\npulsegen(): generating PCASL slice select gradient and RF...\n");
 	fprintf(stderr, "\tstart: %dus, ", tmploc);
-	TRAPEZOID(ZGRAD, gzpcasl,  tmploc + pw_gzpcasla, GRAD_UPDATE_TIME*1000, 0, loggrd);
-	tmploc += pw_gzpcasla ;
+	TRAPEZOID(ZGRAD, gzpcasl,  tmploc , GRAD_UPDATE_TIME*1000, 0, loggrd);
+
 	fprintf(stderr, "\tRF start: %dus, ", tmploc);
+	EXTWAVE(RHO, rfpcasl, tmploc , 500, 1.0, 250, myhanning.rho, , loggrd);
+	/* old line: 
+	
 	EXTWAVE(RHO, rfpcasl, tmploc + psd_rf_wait , 500, 1.0, 250, myhanning.rho, , loggrd);
+
+	If I include the psd_rf_wait , I can see the psd_rf_wait delay 
+	between the gradient and the RF on the scope. This is not the case in other pulses.
+	pcasl code for MR750 did have the psd_rf_wait lag here ... what's different? 
+	Is EXTWAVE handled differently than TRAPEZOID now in MR30?
+
+	*/
+	
 	tmploc += pw_gzpcasl + pw_gzpcasld;
 	fprintf(stderr, "\tend: %dus, ", tmploc);
 
@@ -2000,7 +2150,6 @@ STATUS pulsegen( void )
 	fprintf(stderr, "\ttotal time: %dus (tmploc = %dus)\n", dur_prep1core, tmploc);
 	SEQLENGTH(prep1lblcore, dur_prep1core, prep1lblcore);
 	fprintf(stderr, "\tDone.\n");
-
 
 	/**************************/
 	/* generate prep1ctl core */
@@ -2200,10 +2349,12 @@ STATUS pulsegen( void )
 
 	/* reserve memory for waveform buffers in waveform memory (IPG?)
 	for the phase of the prep pulses.
-	use these for dynamic updates of the phase waveforms in the scan loop */
-	tp_wreserve(TYPTHETA, &phsbuffer1_wf, res_prep1thetalbl);
-	tp_wreserve(TYPTHETA, &phsbuffer2_wf, res_prep1thetactl);
-
+	use these for dynamic updates of the phase waveforms in the scan loop
+	*/	
+	/*
+	tp_wreserve(TYPTHETA, phsbuffer1_wf, res_prep1thetalbl);
+	tp_wreserve(TYPTHETA, phsbuffer2_wf, res_prep1thetactl);
+	*/		
 
 	return SUCCESS;
 }   /* end pulsegen() */
@@ -2361,26 +2512,15 @@ int play_presat() {
 }
 
 /* function for playing asl prep pulses & delays */
-int play_aslprep(s32* off_ctlcore, s32* off_lblcore, int mod, int dur, int pld, int tbgs1, int tbgs2, int tbgs3) {
+int play_aslprep(int type, s32* off_ctlcore, s32* off_lblcore, int dur, int pld, int tbgs1, int tbgs2, int tbgs3) 
+{
 	int ttotal = 0;
 	int ttmp;
-	int type;
 	
-	/* determine current mode */		
-	switch (mod) {
-		case 1: /* label, control... */
-			type = (framen + 1) % 2; /* 1, 0, 1, 0 */
-			break;
-		case 2: /* control, label... */
-			type = framen % 2; /* 0, 1, 0, 1 */
-			break;
-		case 3: /* label */
-			type = 1;
-			break;
-		case 4: /* control */
-			type = 0;
-			break;
-	}
+
+	
+	setrotate(prep_rotmat, 0);
+
 
 	/* play the asl prep pulse */	
 	switch (type) {
@@ -2405,6 +2545,9 @@ int play_aslprep(s32* off_ctlcore, s32* off_lblcore, int mod, int dur, int pld, 
 	ttotal += dur + TIMESSI;
 	startseq(0, MAY_PAUSE);
 	settrigger(TRIG_INTERN, 0);
+
+	/* restore rotation matrix */
+	setrotate(tmtx0, 0);
 
 	/* play pld and background suppression */
 	if (pld > 0) {
@@ -2492,9 +2635,10 @@ int play_pcasl(int type,  int tbgs1, int tbgs2, int pld) {
 	int ttotal = 0;
 	int i;
 	float pcasl_toggle = 1.0; /* variable to switch from control to label... (+1 or -1)*/
+	/* 
 	float tmpPHI=0.0;
-	int iphase;
-
+	int iphase=0;
+	*/
 	pcasl_Npulses = (int)(floor(pcasl_duration/pcasl_period));
 
 	/* set the RF frequency for labeling pulses */
@@ -2502,20 +2646,20 @@ int play_pcasl(int type,  int tbgs1, int tbgs2, int pld) {
 
 	switch (type) {
 		case 0: /* control PCASL: loop alternating the sign of the RF pulse. update the phase*/
-			fprintf(stderr, "\tplay_aslprep(): playing PCASL control pulse (%d us)...\n", pcasl_period);
+			fprintf(stderr, "\tplay_pcasl(): playing PCASL control pulse (%d us)...\n", pcasl_period);
 			pcasl_toggle = -1.0;
 			break;
 		case -1: /* no PCASL - keep the gradients but don't play rf */
-			fprintf(stderr, "\tplay_aslprep(): playing PCASL label pulse (%d us)...\n", pcasl_period );
+			fprintf(stderr, "\tplay_pcasl(): playing NO PCASL pulse (%d us)...\n", pcasl_period );
 			pcasl_toggle = 0.0;
 			break;
 		case 1: /* label PCASL : loop the PCASL core updating the phse of the RF pulses*/
-			fprintf(stderr, "\tplay_aslprep(): playing PCASL label pulse (%d us)...\n", pcasl_period );
+			fprintf(stderr, "\tplay_pcasl(): playing PCASL label pulse (%d us)...\n", pcasl_period );
 			pcasl_toggle = 1.0;
 			break;
 
 		default: /* invalid */
-			fprintf(stderr, "\tplay_aslprep(): ERROR - invalid type (%d)\n", type);
+			fprintf(stderr, "\tplay_pcasl(): ERROR - invalid type (%d)\n", type);
 			rspexit();
 			return -1;
 	}
@@ -2525,16 +2669,16 @@ int play_pcasl(int type,  int tbgs1, int tbgs2, int pld) {
 		/* set the amplitude of the blips */
 		setiamp((int)(pow(pcasl_toggle,i) * pcasl_RFamp_dac), &rfpcasl, 0);
 
-		/* fprintf(stderr, "\tplay_aslprep(): pulse phase %f (rads)...\n", tmpPHI );*/
-		/* set the phase of the blips incrementing phase each time */
+		/* fprintf(stderr, "\tplay_pcasl(): pulse phase %f (rads)...\n", tmpPHI );*/
+		/* set the phase of the blips incrementing phase each time - previously calculated*/
+		setiphase(pcasl_iphase_tbl[i], &rfpcasl,0);
 		 
-		/* setphase(tmpPHI, &rfpcasl, 0  );*/
-		tmpPHI += pcasl_delta_phs; 
-                tmpPHI = atan2 (sin(tmpPHI), cos(tmpPHI));      /* wrap phase to (-pi,pi) range */
-
-		/* go to DAC units */
-                iphase = (int)(tmpPHI/M_PI * (float)FS_PI);
+		/*
+	    tmpPHI = atan2 (sin(tmpPHI), cos(tmpPHI));     
+        iphase = (int)(tmpPHI/M_PI * (float)FS_PI);
 		setiphase(iphase, &rfpcasl,0);
+		tmpPHI += pcasl_delta_phs; 
+		*/
 
 		boffset(off_pcaslcore);
 		startseq(0, MAY_PAUSE);
@@ -2542,7 +2686,7 @@ int play_pcasl(int type,  int tbgs1, int tbgs2, int pld) {
 	}
 	ttotal += pcasl_Npulses*(pcasl_period);
 
-	/* Play pld and background suppression - same code as in the play_aslprep() */
+	/* Play pld and background suppression - same code as in the play_pcasl() */
 	if (pld > 0) {
 
 		/* Initialize pld before subtracting out tbgs timing */
@@ -2550,7 +2694,7 @@ int play_pcasl(int type,  int tbgs1, int tbgs2, int pld) {
 
 		if (tbgs1 > 0) {
 			/* Play first background suppression delay/pulse */
-			fprintf(stderr, "\tplay_aslprep(): playing bkg suppression pulse 1 delay (%d us)...\n", tbgs1 + TIMESSI);		
+			fprintf(stderr, "\tplay_pcasl(): playing bkg suppression pulse 1 delay (%d us)...\n", tbgs1 + TIMESSI);		
 			setperiod(tbgs1, &emptycore, 0);
 			ttmp -= (tbgs1 + TIMESSI);
 			boffset(off_emptycore);
@@ -2558,7 +2702,7 @@ int play_pcasl(int type,  int tbgs1, int tbgs2, int pld) {
 			settrigger(TRIG_INTERN, 0);
 			ttotal += tbgs1 + TIMESSI;
 
-			fprintf(stderr, "\tplay_aslprep(): playing bkg suppression pulse 1 (%d us)...\n", dur_bkgsupcore + TIMESSI);
+			fprintf(stderr, "\tplay_pcasl(): playing bkg suppression pulse 1 (%d us)...\n", dur_bkgsupcore + TIMESSI);
 			ttmp -= (dur_bkgsupcore + TIMESSI);
 			boffset(off_bkgsupcore);
 			startseq(0, MAY_PAUSE);
@@ -2568,7 +2712,7 @@ int play_pcasl(int type,  int tbgs1, int tbgs2, int pld) {
 
 		if (tbgs2 > 0) {
 			/* Play second background suppression delay/pulse */
-			fprintf(stderr, "\tplay_aslprep(): playing bkg suppression pulse 2 delay (%d us)...\n", tbgs2 + TIMESSI);		
+			fprintf(stderr, "\tplay_pcasl(): playing bkg suppression pulse 2 delay (%d us)...\n", tbgs2 + TIMESSI);		
 			setperiod(tbgs2, &emptycore, 0);
 			ttmp -= (tbgs2 + TIMESSI);
 			boffset(off_emptycore);
@@ -2576,7 +2720,7 @@ int play_pcasl(int type,  int tbgs1, int tbgs2, int pld) {
 			settrigger(TRIG_INTERN, 0);
 			ttotal += tbgs2 + TIMESSI;
 
-			fprintf(stderr, "\tplay_aslprep(): playing bkg suppression pulse 2 (%d us)...\n", dur_bkgsupcore + TIMESSI);
+			fprintf(stderr, "\tplay_pcasl(): playing bkg suppression pulse 2 (%d us)...\n", dur_bkgsupcore + TIMESSI);
 			ttmp -= (dur_bkgsupcore + TIMESSI);
 			boffset(off_bkgsupcore);
 			startseq(0, MAY_PAUSE);
@@ -2586,12 +2730,12 @@ int play_pcasl(int type,  int tbgs1, int tbgs2, int pld) {
 
 		/* Check that ttmp is non-negative */
 		if (ttmp < 0) {
-			fprintf(stderr, "\tplay_aslprep(): ERROR: invalid pld and background suppression time combination\n");
+			fprintf(stderr, "\tplay_pcasl(): ERROR: invalid pld and background suppression time combination\n");
 			rspexit();
 		}
 
 		/* Play remaining PLD deadtime */
-		fprintf(stderr, "\tplay_aslprep(): playing post-label delay (%d us), total end delay = %d us...\n", pld, ttmp);
+		fprintf(stderr, "\tplay_pcasl(): playing post-label delay (%d us), total end delay = %d us...\n", pld, ttmp);
 		setperiod(ttmp - TIMESSI, &emptycore, 0);
 		boffset(off_emptycore);
 		startseq(0, MAY_PAUSE);
@@ -2600,168 +2744,52 @@ int play_pcasl(int type,  int tbgs1, int tbgs2, int pld) {
 	}	
 	return ttotal;
 
-}
-
-/* PLAY_ASLPREP() Function for playing asl prep pulses & delays */
-int play_aslprep(int type, s32* off_ctlcore, s32* off_lblcore, int dur, int tbgs1, int tbgs2, int pld) {
-	int ttotal = 0;
-	int ttmp;
-
-	/* Play the VSASL pulse */	
-	switch (type) {
-		case 0: /* control */
-			fprintf(stderr, "\tplay_aslprep(): playing control pulse (%d us)...\n", dur + TIMESSI);
-			boffset(off_ctlcore);
-			break;
-		case 1: /* label */
-			fprintf(stderr, "\tplay_aslprep(): playing label pulse (%d us)...\n", dur + TIMESSI);
-			boffset(off_lblcore);
-			break;
-		case -1:
-			ttotal = dur + TIMESSI + pld + TIMESSI;
-			fprintf(stderr, "\tplay_aslprep(): playing deadtime in place of asl prep pulse (%d us)...\n", ttotal);
-			play_deadtime(ttotal);
-			return ttotal;
-		default: /* invalid */
-			fprintf(stderr, "\tplay_aslprep(): ERROR - invalid type (%d)\n", type);
-			rspexit();
-			return -1;
-	}	
-	ttotal += dur + TIMESSI;
-	startseq(0, MAY_PAUSE);
-	settrigger(TRIG_INTERN, 0);
-
-	/* Play pld and background suppression */
-	if (pld > 0) {
-
-		/* Initialize pld before subtracting out tbgs timing */
-		ttmp = pld;
-
-		if (tbgs1 > 0) {
-			/* Play first background suppression delay/pulse */
-			fprintf(stderr, "\tplay_aslprep(): playing bkg suppression pulse 1 delay (%d us)...\n", tbgs1 + TIMESSI);		
-			setperiod(tbgs1, &emptycore, 0);
-			ttmp -= (tbgs1 + TIMESSI);
-			boffset(off_emptycore);
-			startseq(0, MAY_PAUSE);
-			settrigger(TRIG_INTERN, 0);
-			ttotal += tbgs1 + TIMESSI;
-
-			fprintf(stderr, "\tplay_aslprep(): playing bkg suppression pulse 1 (%d us)...\n", dur_bkgsupcore + TIMESSI);
-			ttmp -= (dur_bkgsupcore + TIMESSI);
-			boffset(off_bkgsupcore);
-			startseq(0, MAY_PAUSE);
-			settrigger(TRIG_INTERN, 0);
-			ttotal += dur_bkgsupcore + TIMESSI;
-		}
-		
-		if (tbgs2 > 0) {
-			/* Play second background suppression delay/pulse */
-			fprintf(stderr, "\tplay_aslprep(): playing bkg suppression pulse 2 delay (%d us)...\n", tbgs2 + TIMESSI);		
-			setperiod(tbgs2, &emptycore, 0);
-			ttmp -= (tbgs2 + TIMESSI);
-			boffset(off_emptycore);
-			startseq(0, MAY_PAUSE);
-			settrigger(TRIG_INTERN, 0);
-			ttotal += tbgs2 + TIMESSI;
-
-			fprintf(stderr, "\tplay_aslprep(): playing bkg suppression pulse 2 (%d us)...\n", dur_bkgsupcore + TIMESSI);
-			ttmp -= (dur_bkgsupcore + TIMESSI);
-			boffset(off_bkgsupcore);
-			startseq(0, MAY_PAUSE);
-			settrigger(TRIG_INTERN, 0);
-			ttotal += dur_bkgsupcore + TIMESSI;
-		}
-
-		/* Check that ttmp is non-negative */
-		if (ttmp < 0) {
-			fprintf(stderr, "\tplay_aslprep(): ERROR: invalid pld and background suppression time combination\n");
-			rspexit();
-		}
-
-		/* Play remaining PLD deadtime */
-		fprintf(stderr, "\tplay_aslprep(): playing post-label delay (%d us), total end delay = %d us...\n", pld, ttmp);
-		setperiod(ttmp - TIMESSI, &emptycore, 0);
-		boffset(off_emptycore);
-		startseq(0, MAY_PAUSE);
-		settrigger(TRIG_INTERN, 0);
-		ttotal += ttmp;
-	}
-
-	return ttotal;
 }
 
 /* LHG 12/6/12 : compute the linear phase increment of the PCASL pulses - NOT USED currently*/
 int calc_pcasl_phases(int *iphase_tbl, float  myphase_increment, int nreps)
 {
-        int     n;
-        double  rfphase; 
- 
+	int     n;
+	double  rfphase; 
+
 	fprintf(stderr,"\nUpdating PCASL phase table .... "); 
-        rfphase=0;
-    	 
-        for (n=0; n<nreps*2; n++)
-        {
-                rfphase += myphase_increment;
-                rfphase = atan2 (sin(rfphase), cos(rfphase));      /* wrap phase to (-pi,pi) range */
+	rfphase = 0.0;
+
+	for (n=0; n<nreps; n++)
+	{
+		rfphase += myphase_increment;
+		/* wrap phase to (-pi,pi) range */
+		rfphase = atan2 (sin(rfphase), cos(rfphase));      
 		/* translate to DAC units */
-                iphase_tbl[n] = (int)(rfphase/M_PI * (float)FS_PI);
-        }
+		iphase_tbl[n] = (int)(rfphase/M_PI * (float)FS_PI);
+	}
 	fprintf(stderr,"Done .\n "); 
 	return 1;
 }               
         
-
-int calc_prep_phs_from_velocity (int* prep_pulse_phs, short* prep_pulse_phs_out, int* prep_pulse_grad, float vel_target, int vsi_train_len, float vsi_Gmax)
+/* function to figure out whether it's a lable or a control */
+int determine_label_type(int mode, int framen)
 {
-/* This function adds a linear phase shift to the velocity selective pulses
- in order to shift the velocity selectivity profile to a different velocity */
+	int type = -1;
 
-	/* GAMMA_H1 26754 in (rad/s)/Gauss */
-	float phase_val;
-	float grad_val;
-	float pos=0.0;
-	float dt = 4e-6;
-	float delta_phs = 0.0;
-	int 	i;
-	int	DACMAX = 32766;
-	short	tmp;
-
-	for (i=1; i<vsi_train_len; i++)
-	{
-		/* from DAC units to radians */
-		phase_val = M_PI * (float)(prep_pulse_phs[i]) /  (float)FS_PI  ; 		
-		/* from DAC units to G/cm */
-		grad_val = vsi_Gmax * (float)(prep_pulse_grad[i]) / (float)DACMAX ;
-
-		/* calc the phase gained by moving spins during THIS dt interval */
-		pos += vel_target*dt; 
-		delta_phs += GAMMA * grad_val * pos * dt ;
-
-		/* change the phase of the pulse accordingly */
-		phase_val -=  delta_phs;
-
-		/* from radians to DAC ... unwrap first  , then make them even numbers only. */	
-		phase_val = atan2( sin(phase_val), cos(phase_val));
-		phase_val = phase_val * (float)(FS_PI) / M_PI;
-		tmp = (short)(phase_val);
-
-		/* make sure they are even numbers */
-		prep_pulse_phs_out[i] = 2*(tmp/2);
+	switch (mode) {
+		case 1: /* label, control... */
+			type = (framen + 1) % 2; /* 1, 0, 1, 0 */
+			break;
+		case 2: /* control, label... */
+			type = framen % 2; /* 0, 1, 0, 1 */
+			break;
+		case 3: /* label */
+			type = 1;
+			break;
+		case 4: /* control */
+			type = 0;
+			break;
 	}
-	
-	for (i=0; i<vsi_train_len; i++)
-	{
-		if (prep_pulse_phs[i] == 0) 
-			prep_pulse_phs_out[i] = 0;
-
-	}
-	/* make sure the EOS bit is set at the end, by adding 1 to the last number */
-	prep_pulse_phs_out[vsi_train_len - 1] += 1;
+	return type;
+}
 
 
-	return 1;
-}	
 
 /* function for playing fat sup pulse */
 int play_fatsup() {
@@ -2841,6 +2869,74 @@ STATUS play_endscan() {
 	fprintf(stderr, "\tplay_endscan(): Done.\n");
 	return SUCCESS;
 }
+int calc_prep_phs (int* prep_pulse_phs, short** prep_pulse_phs_out, int* prep_pulse_grad,  int vsi_train_len, float vsi_Gmax)
+{
+/* This function adds a linear phase shift to the velocity selective pulses
+in order to shift the velocity selectivity profile to a different velocity
+
+Pre computes a table of phase waveforms for the FTVS pulses so that they 
+ill target different velocities on different frames of the time series */
+
+/* matlab code (this works fine in simulation)
+	t = [0:length(B1)-1]*dt;
+	phsvel = gambar*vel_target*cumsum(Gz(:).*t(:))*dt;
+	B1sel = B1 .* exp(-1i*phsvel);
+	*/
+	
+	/* GAMMA 26754 in (rad/s)/Gauss */
+	float phase_val;		/* rad */
+	float grad_val;			/* G/cm */
+	float dt = 4e-6;  		/* sec */
+	float delta_phs = 0.0; 	/* rad */
+	int 	i, iv;
+	int	DACMAX = 32766;
+	float t = 0.0;
+	int numVels = 0;
+
+	numVels = nframes/vspectrum_Navgs;
+		
+	FILE *fID = fopen("vs_phasewaves.txt", "w");
+
+	for (iv=0 ; iv<numVels; iv++){
+		t=0.0;
+		for (i=0; i<vsi_train_len; i++)
+		{
+			/* from DAC units to radians */
+			phase_val = M_PI * (float)(prep_pulse_phs[i]) /  (float)FS_PI  ; 		
+			/* from DAC units to G/cm */
+			grad_val = vsi_Gmax * (float)(prep_pulse_grad[i]) / (float)DACMAX ;
+
+			/* calc the phase gained by moving spins during the last dt interval */
+			delta_phs += GAMMA * grad_val * vel_target * t * dt ;
+
+			/* change the phase of the pulse accordingly */
+			phase_val -=  delta_phs;
+
+			/* phase unwrapping */
+			phase_val = atan2( sin(phase_val), cos(phase_val));
+			/* from radians to DAC  */	
+			phase_val = phase_val * (float)(FS_PI) / M_PI;
+			/* make sure they are even numbers and can be written as shorts later*/
+			prep_pulse_phs_out[iv][i] = (short)(phase_val);
+			prep_pulse_phs_out[iv][i] /= 2 ;
+			prep_pulse_phs_out[iv][i] *= 2 ;
+
+			fprintf(fID, "%d, ", prep_pulse_phs_out[iv][i]);
+			t += dt;
+		}
+		fprintf(stderr, "\ncalc_prep_phs(): integration successful (%d points) for %f cm/s", vsi_train_len, vel_target);
+		fprintf(fID, "\n");
+
+		/* make sure the EOS bit is set at the end, by adding 1 to the last number*/ 
+		
+		prep_pulse_phs_out[iv][vsi_train_len - 1] += 1;
+		fprintf(stderr, "\ncalc_prep_phs(): setting zeros and EOS bit successful");
+		
+		vel_target += vel_target_incr;
+	}
+	fclose(fID);
+	return 1;
+}	
 
 /* function for playing prescan sequence : MOSTLY the same as the scan loop */
 STATUS prescanCore() {
@@ -2850,6 +2946,10 @@ STATUS prescanCore() {
 	/* initialize the rotation matrix */
 	setrotate( tmtx0, 0 );
 	
+	/* prep 1 labeling/control type*/
+	int ptype = 1;
+	int pcasl_type = 0;  /* use the control case for the prescan */
+
 	for (view = 1 - rspdda; view < rspvus + 1; view++) {
 		ttotal = 0;
 
@@ -2861,19 +2961,18 @@ STATUS prescanCore() {
 		/* PCASL pulse after pre-sat pulse */
 		if (pcasl_flag > 0  &&  framen >= nm0frames){
 			fprintf(stderr, "prescanCore(): Playing PCASL pulse for frame %d, shot %d (t = %d / %.0f us)...\n", framen, shotn, ttotal, pitscan);
-			/* ttotal += play_pcasl(pcasl_lbltbl[framen], pcasl_tbgs1tbl[framen], pcasl_tbgs2tbl[framen], pcasl_pldtbl[framen]); * will use this for arbitrary labeling schedules */
-			ttotal += play_pcasl(pcasl_lbltbl[framen], pcasl_tbgs1tbl[framen], pcasl_tbgs2tbl[framen], pcasl_pldtbl[framen]);
+			ttotal += play_pcasl(pcasl_type, pcasl_tbgs1, pcasl_tbgs2, pcasl_pld);
 		}
 		/* prep1 (vsasl module) */
 		if (prep1_id > 0 ) {
 			fprintf(stderr, "prescanCore(): playing prep1 pulse for frame %d, shot %d (t = %d / %.0f us)...\n", framen, shotn, ttotal, pitscan);
-			ttotal += play_aslprep(off_prep1ctlcore, off_prep1lblcore, prep1_mod, dur_prep1core, prep1_pld, prep1_tbgs1, prep1_tbgs2, prep1_tbgs3);
+			ttotal += play_aslprep(ptype, off_prep1ctlcore, off_prep1lblcore,  dur_prep1core, prep1_pld, prep1_tbgs1, prep1_tbgs2, prep1_tbgs3);
 		}
 
 		/* prep2 (vascular crusher module) */
 		if (prep2_id > 0 ) {
 			fprintf(stderr, "prescanCore(): playing prep2 pulse for frame %d, shot %d (t = %d / %.0f us)...\n", framen, shotn, ttotal, pitscan);
-			ttotal += play_aslprep(off_prep2ctlcore, off_prep2lblcore, prep2_mod, dur_prep2core, prep2_pld, prep2_tbgs1, prep2_tbgs2, prep2_tbgs3);
+			ttotal += play_aslprep(ptype, off_prep2ctlcore, off_prep2lblcore, dur_prep2core, prep2_pld, prep2_tbgs1, prep2_tbgs2, prep2_tbgs3);
 		}
 
 		/* fat sup pulse */
@@ -2918,12 +3017,16 @@ STATUS prescanCore() {
 			fprintf(stderr, "prescanCore(): Playing flip pulse for prescan iteration %d...\n", view);
 			ttotal += play_rf1(90*(ro_type == 1));
 
+			/* set rotation matrix for each echo readout */
+			setrotate( tmtxtbl[echon], 0 );
+
 			fprintf(stderr, "prescanCore(): playing readout for prescan iteration %d , echo %d...\n", view, echon);
 			ttotal += play_readout();
+
+			/*restore gradients for exctiation pulse*/				
+			setrotate( tmtx0, 0 );
 		}
 
-		/* restore gradients */				
-		/*setrotate( tmtx0, 0 );*/
 
 		fprintf(stderr, "prescanCore(): playing deadtime for prescan iteration %d...\n", view);
 		play_deadtime(optr - ttotal);
@@ -2983,8 +3086,14 @@ STATUS scan( void )
 	int ttotal = 0;
 	int rotidx;
 	float calib_scale;
-	int sweepctr=0;
-	short *phsbuffer;
+	int vspectrum_rep=0;
+	int vel_target_num = 0;
+	int i;
+	/* variable phase waveform for velocity spectrum */
+	short **s_phsbuffer; 
+
+	int pcasl_type, prep1_type, prep2_type;
+
 	float arf1_var = 0;
 
 	fprintf(stderr, "scan(): beginning scan (t = %d / %.0f us)...\n", ttotal, pitscan);
@@ -2992,10 +3101,29 @@ STATUS scan( void )
 	/* VELOCITY SPECTRUM IMAGING:
 	generate seqData objects to contain the phase waveform in HW memory 
 	so we can be update the prep pulse phase waveforms inside the scan loop*/
-	getWaveSeqDataWavegen(&sdTheta1, TYPTHETA, 0, 0, 0, PULSE_CREATE_MODE);	
-	getWaveSeqDataWavegen(&sdTheta2, TYPTHETA, 0, 0, 0, PULSE_CREATE_MODE);	
-	phsbuffer = (short*)AllocNode(prep1_len*sizeof(short));
 	
+	/*
+	getWaveSeqDataWavegen(&sdTheta1, TYPTHETA, 0, 0, 0, PULSE_CREATE_MODE);	
+	phsbuffer1_wf = (WF_HW_WAVEFORM_PTR)AllocNode(prep1_len*sizeof(int));
+	*/
+	
+	/*-------------------------------------------------
+	Calculations for velocity spectrum mode 1: 
+	--------------------------------------*/
+	if (doVelSpectrum==1 && prep1_id >0)
+	{
+		/* pre-calculate a table of phase waveforms for the theta channel */
+		fprintf(stderr, "scan():  allocating space for table of phase waveforms \n");
+		s_phsbuffer = 	(short **)AllocNode(nframes/2*sizeof(short *));
+		for(i=0; i< nframes/2; i++){
+			s_phsbuffer[i] = (short *)AllocNode(prep1_len*sizeof(short));
+		}
+
+		fprintf(stderr, "scan(): calling calc_prep_phs() to create phase table for prep 1 , prep1_len: %d, prep1_len: %d \n", prep1_len, prep1_len);
+		calc_prep_phs(prep1_theta_lbl, s_phsbuffer, prep1_grad_lbl, prep1_len, prep1_gmax);
+		fprintf(stderr, "scan(): ... done \n");
+	}
+
 	/* Play an empty acquisition to reset the DAB after prescan */
 	if (disdaqn == 0) {
 		/* Turn the DABOFF */
@@ -3058,72 +3186,133 @@ STATUS scan( void )
 	frames are the number images in the time series
 	shots are the number of kzsteps in stack of spirals, and also the number of echoes in the echo train
 	arms is the spiral z-rotations in SOS, or also the second axis rotation in SERIOS*/
+
+	
 	for (framen = 0; framen < nframes; framen++) {
 
-		/* If we're doing velocity spectrum imaging, 
-		   we have to sweep through a number of target velocities
-		   incrementing the target velocity every vel_sweep_frames */	
-		if (doVelSpectrum){
-			fprintf(stderr, "\nscan(): velocity spectrum temp counter: %d \n", sweepctr); 
-			if (sweepctr == vel_sweep_frames){
-				sweepctr = 0;
-				vel_target += vel_target_incr;
-				fprintf(stderr, "\n\n scan() velocity spectrum: updating for prep1 pulse for vel %f \n", vel_target);
+		/* Velocity spectrum imaging
+		----------------------------------------------------
+		If we're doing velocity spectrum imaging, 
+		we have to sweep through a number of target velocities
+		or velocity encoding gradients
+		incrementing every "vspectrum_Navgs" 
+		*/	
+		/* Method 1: FTVS velocity target using phase control */
+		if (doVelSpectrum==1 && framen >= nm0frames){
+
+			fprintf(stderr, "\nscan(): velocity spectrum Avgs. counter: %d", vspectrum_rep); 
+
+			if (vspectrum_rep == vspectrum_Navgs){
+
+				fprintf(stderr, "\n\nscan() updating phase waveform for prep1 pulse (movewaveimm) %d\n", vel_target_num);
+				movewaveimm(s_phsbuffer[vel_target_num], &prep1thetalbl, (int)0, prep1_len, TOHARDWARE); 
+				fprintf(stderr, "scan(): ... done \n");
+
+				vspectrum_rep = 0;	
+				vel_target_num++;
 			}	
-			sweepctr++ ;
-		}			
 
-		/* Now Adjust the  phase prep1 VS pulse so that we can do velocity targetting*/
-		if (vel_target > 0.0 )
-		{
-			fprintf(stderr, "scan(): calling calc_prep_phs_from_velocity() to adjust the phase on prep 1 \n");
-			
-			/* calculate the new phase waveform for the theta channel */
-			calc_prep_phs_from_velocity(prep1_theta_lbl, phsbuffer, prep1_grad_lbl, vel_target, prep1_len, prep1_gmax);
-			fprintf(stderr, "scan(): ... done \n");
-			/* copy the new phase buffer to the hardware memory buffer*/
-			fprintf(stderr, "scan(): moving the waveform into the wf memoery \n");
-			movewaveimmrsp(sdTheta1, phsbuffer, phsbuffer1_wf, prep1_len, TOHARDWARE);
-			fprintf(stderr, "scan(): ... done \n");
-			/* set the waveform object to point to the memory location we just updated*/
-			fprintf(stderr, "scan(): pointing the prep1 pulse to the new waveform [this seems to kill the scan]]\n");
-			setwave(phsbuffer1_wf, &prep1thetalbl, 0);  
-			fprintf(stderr, "scan(): ... done \n");
+			/* do the same thing with the control pulse ? -- NO!! */
 
-
-			/* do the same thing with the control pulse */
-
-			/* calculate the new phase waveform for the theta channel */
-			/* calc_prep_phs_from_velocity(prep1_theta_ctl, phsbuffer, prep1_grad_ctl, vel_target, prep1_len, prep1_gmax);*/
-			/* copy the new phase buffer to the hardware memory buffer*/
-			/* movewaveimmrsp(sdTheta2, phsbuffer, phsbuffer2_wf, prep1_len, TOHARDWARE); */
-			/* set the waveform object to point to the memory location we just updated*/
-			/* setwave(phsbuffer2_wf, &prep2thetactl, 0);*/
+			vspectrum_rep++ ;
 		}
 
-		/* if we want to calibrate the phase correction to correct for off-resonance
-		   we increment the size of the phase steps between pulses.
-		   We will do this every 'pcasl_calib_frames' frames - must be an even number! */
+		/* Method 2: If using BIR8 pulses - sweep through the venc gradients*/
+		if (doVelSpectrum==2 && framen >= nm0frames){
+			fprintf(stderr, "\nscan():Encoding velocity spectrum Avgs. counter: %d \n", vspectrum_rep); 
+			if (vspectrum_rep == vspectrum_Navgs)
+			{
+				fprintf(stderr, "\n\nscan() velocity spectrum: updating for prep1 pulse for vel %f \n\n", vel_target);
+				vspectrum_rep = 0;
+				vspectrum_grad += prep1_delta_gmax;
+			}	
+			ia_prep1gradlbl = (int)ceil(vspectrum_grad / ZGRAD_max * (float)MAX_PG_WAMP);
+			ia_prep1gradctl = (int)ceil(vspectrum_grad / ZGRAD_max * (float)MAX_PG_WAMP);
+			setiamp(ia_prep1gradctl, &prep1gradctl, 0);
+			setiamp(ia_prep1gradlbl, &prep1gradlbl, 0);
+			vspectrum_rep++ ;
+
+		}
+
+		/* PCASL phase calibration
+		-------------------------------------------------
+		if we want to calibrate the phase correction to correct for off-resonance
+		we increment the size of the phase steps between pulses.
+		We will do this every 'pcasl_calib_frames' frames - must be an even number! 
+		*/
 		if (pcasl_flag	&& pcasl_calib) {
 			nm0frames = 0;
-			phs_cal_step = 2*M_PI/(nframes/pcasl_calib_frames);
+			phs_cal_step = 2.0*M_PI / (float)(nframes) * (float)(pcasl_calib_frames);
 
-			fprintf(stderr, "\nscan(): Phase calibration counter: %d \n", sweepctr); 
-			if (sweepctr == pcasl_calib_frames ){
-				sweepctr = 0;
-				pcasl_delta_phs += phs_cal_step;
+			fprintf(stderr, "\nscan(): Phase calibration counter: %d \n", pcasl_calib_cnt); 
+			
+			if (pcasl_calib_cnt == pcasl_calib_frames ){
 				fprintf(stderr, "\n\n scan() CALIBRATION: updating PCASL linear phase increment: %f (rads) and phase table\n\n", pcasl_delta_phs);
-				/* update the pcasl phase table - NOT USED currently */
-				/* calc_pcasl_phases(pcasl_iphase_tbl, pcasl_delta_phs, MAXPCASLSEGMENTS);*/
+				pcasl_delta_phs += phs_cal_step;				
+				calc_pcasl_phases(pcasl_iphase_tbl, pcasl_delta_phs, MAXPCASLSEGMENTS);
+				pcasl_calib_cnt = 0;
 			}
-			sweepctr++;
+			pcasl_calib_cnt++;
 		}
 
+		/* MRF ASL mode
+		-------------------------------------------------
+		MRF case:use the values in the mrf tables for the acquisition.  
+		We update the values in every frame
+		*/
+		if (mrf_mode){
+			fprintf(stderr, "\n\n scan(): MRF MODE : updating schedule from mrf tables\n");
+			
+			presat_flag = 0;
+			nm0frames = 0;
+
+			tr_deadtime		= 4* (int)(mrf_deadtime[framen]* 1e6 / 4);
+			pcasl_type		= mrf_pcasl_type[framen];
+			pcasl_duration 		= 4*(int)(mrf_pcasl_duration[framen] * 1e6 / 4); 	/* seconds -> us, resolution of 4 us */
+			pcasl_Npulses 		= 4*(int)(floor(pcasl_duration/pcasl_period / 4));
+			pcasl_duration 		= pcasl_period * pcasl_Npulses; 	
+			pcasl_pld		= 4*(int)(mrf_pcasl_pld[framen] * 1e6 / 4);
+
+			prep1_type		= mrf_prep1_type[framen];
+			prep1_pld		= 4*(int)(mrf_prep1_pld[framen]* 1e6 / 4); 
+
+			prep1_tbgs1 		= 0;
+			prep1_tbgs2 		= 0;
+			prep1_tbgs3 		= 0;
+			
+			prep2_type		= mrf_prep2_type[framen];
+			prep2_pld		= 4*(int)(mrf_prep2_pld[framen]* 1e6 /4);  
+
+			prep2_tbgs1 		= 0;
+			prep2_tbgs2 		= 0;
+			prep2_tbgs3 		= 0;
+		
+		}
+		else
+		{
+			/* if we're not doing MRF, 
+			determine prep1 and prep2  type based on the switching  mode 
+			*/		
+			pcasl_type = determine_label_type(pcasl_mod, framen);
+			prep1_type = determine_label_type(prep1_mod, framen);	
+			prep2_type = determine_label_type(prep2_mod, framen);	
+
+		}
+
+		/* Quick Sanity Check 
+		------------------------------------
+		Whether we are doing an MRF schedule or the working on non-MRF mode: Are we playing the right thing at the right time? 
+		*/
+		fprintf(stderr,"\nUpdating %d frame of %d : \t deadtime: %d \tpcasl_type: %d \tpcasl_duration: %d \tpcasl_pld: %d \tprep1_type: %d \tprep1_pld: %d \tprep2_type: %d \tprep2_pld; %d\n", 
+			framen, nframes, tr_deadtime, pcasl_type, pcasl_duration, pcasl_pld, prep1_type, prep1_pld,  prep2_type,  prep2_pld);
+  
 		for (armn = 0; armn < narms; armn++) {
 
 			for (shotn = 0; shotn < opnshots; shotn++) {
 
-				/* set amplitudes for rf calibration modes */
+				/* B1 calibration:
+				-------------------
+				set amplitudes for rf calibration modes */
 				calib_scale = (float)framen / (float)(nframes - 1);
 				if (rf1_b1calib) {
 					fprintf(stderr, "scan():  rf1_b1calib: setting ia_rf1 = %d\n", 2*(int)ceil(calib_scale*(float)ia_rf1 / 2.0));
@@ -3143,7 +3332,7 @@ STATUS scan( void )
 				/* play TR deadtime */
 				ttotal += play_deadtime(tr_deadtime);
 
-				fprintf(stderr, "scan(): ************* beginning loop for frame %d, arm %d, shot %d *************\n", framen, shotn, armn);
+				fprintf(stderr, "scan(): ************* beginning loop for frame %d, shot %d, arm %d *************\n", framen, shotn, armn);
 
 				/* play the ASL pre-saturation pulse to reset magnetization */
 				if (presat_flag) {
@@ -3154,18 +3343,18 @@ STATUS scan( void )
 				if (pcasl_flag > 0  &&  framen >= nm0frames){
 					fprintf(stderr, "scan(): Playing PCASL pulse for frame %d, shot %d (t = %d / %.0f us)...\n", framen, shotn, ttotal, pitscan);
 					/* ttotal += play_pcasl(pcasl_lbltbl[framen], pcasl_tbgs1tbl[framen], pcasl_tbgs2tbl[framen], pcasl_pldtbl[framen]); * will use this for arbitrary labeling schedules */
-					ttotal += play_pcasl(pcasl_lbltbl[framen], pcasl_tbgs1tbl[framen], pcasl_tbgs2tbl[framen], pcasl_pldtbl[framen]);
+					ttotal += play_pcasl(pcasl_type, pcasl_tbgs1, pcasl_tbgs2, pcasl_pld);
 				}
 				/* prep1 (vsasl module) */
-				if (prep1_id > 0 ) {
+				if (prep1_id > 0 && framen >= nm0frames) {
 					fprintf(stderr, "scan(): playing prep1 pulse for frame %d, shot %d (t = %d / %.0f us)...\n", framen, shotn, ttotal, pitscan);
-					ttotal += play_aslprep(off_prep1ctlcore, off_prep1lblcore, prep1_mod, dur_prep1core, prep1_pld, prep1_tbgs1, prep1_tbgs2, prep1_tbgs3);
+					ttotal += play_aslprep(prep1_type, off_prep1ctlcore, off_prep1lblcore, dur_prep1core, prep1_pld, prep1_tbgs1, prep1_tbgs2, prep1_tbgs3);
 				}
 
-				/* prep2 (vascular crusher module) */
+				/* prep2 (vascular crusher module - or T2 weigthing module) */
 				if (prep2_id > 0 ) {
 					fprintf(stderr, "scan(): playing prep2 pulse for frame %d, shot %d (t = %d / %.0f us)...\n", framen, shotn, ttotal, pitscan);
-					ttotal += play_aslprep(off_prep2ctlcore, off_prep2lblcore, prep2_mod, dur_prep2core, prep2_pld, prep2_tbgs1, prep2_tbgs2, prep2_tbgs3);
+					ttotal += play_aslprep(prep2_type, off_prep2ctlcore, off_prep2lblcore, dur_prep2core, prep2_pld, prep2_tbgs1, prep2_tbgs2, prep2_tbgs3);
 				}
 
 				/* fat sup pulse */
@@ -3245,12 +3434,23 @@ STATUS scan( void )
 
 					/* Set the view transformation matrix */
 					rotidx = armn*opnshots*opetl + shotn*opetl + echon;
+					if (mrf_mode==1){
+						rotidx += framen*narms*opnshots*opetl;
+					}
+
 					if (kill_grads)
 						setrotate( zmtx, 0 );
 					else
 						setrotate( tmtxtbl[rotidx], 0 );
 
 					fprintf(stderr, "scan(): playing readout for frame %d, shot %d, echo %d (%d us)...\n", framen, shotn, echon, dur_seqcore);
+					fprintf(stderr, "scan(): rotation matrix index=  %d, mrf_mode= %d, spi_mode = %d\n", rotidx, mrf_mode, spi_mode);
+					fprintf(stderr, "rotation tmtxtbl entries for this echo : \n");
+					for (i=0; i<9; i++){
+						fprintf(stderr, "\t%ld", tmtxtbl[rotidx][i]);
+					}
+					fprintf(stderr, "\n");
+
 					ttotal += play_readout();
 
 					/* Reset the rotation matrix */
@@ -3261,9 +3461,8 @@ STATUS scan( void )
 		}
 	}
 
-	FreeNode(phsbuffer);
-	FreeNode(&phsbuffer1_wf);
-	FreeNode(&phsbuffer2_wf);
+	/* clear memory for the velocity spectrum buffers - if needed*/
+	FreeNode(s_phsbuffer);
 
 	fprintf(stderr, "scan(): reached end of scan, sending endpass packet (t = %d / %.0f us)...\n", ttotal, pitscan);
 	play_endscan();
@@ -3291,6 +3490,7 @@ void dummylinks( void )
 * Define the functions that will run on the host 
 * during predownload operations
 *****************************************************/
+
 int genspiral() {
 
 	FILE *fID_ktraj = fopen("ktraj.txt", "w");
@@ -3322,9 +3522,18 @@ int genspiral() {
 	float kxn, kyn;
 	
 	/* calculate FOV coefficients */
+	/* these calculations are a bit suspect 
 	F0 = 1.1*(1.0/vds_acc1 / (float)narms * (float)opfov / 10.0);
 	F1 = 1.1*(2*pow((float)opfov/10.0,2)/opxres *(1.0/vds_acc1 - 1.0/vds_acc0)/(float)narms);
 	F2 = 0;
+	...*/
+	/* LHG: the above code doesn't work quite right - looking at trajectories in WTools and plotting them
+	they are not making sense to me.
+	.... Let's try something simpler */
+	F0 = vds_acc0 * (float)opfov/10.0 / (float)narms ;
+	F1 =(vds_acc1 * (float)opfov/10.0 / (float)narms - F0) / kxymax  ; 
+	F2 = 0;
+	
 	if (ro_type == 1) { /* FSE and bSSFP - spiral in-out */
 		F0 /= 2;
 		F1 /= 2;
@@ -3334,11 +3543,17 @@ int genspiral() {
 	F[1] = F1;
 	F[2] = F2;
 	
+	fprintf(stderr, "genspiral(): FOV coefficients are %0.2f %0.2f\n", F0, F1);
+
 	/* generate the vd-spiral out gradients */	
 	calc_vds(SLEWMAX, GMAX, dt, dt, 1, F, 2, kxymax, MAXWAVELEN, &gx_vds, &gy_vds, &n_vds);
 
 	/* calculate gradient ramp-down */
 	n_rmp = ceil(fmax(fabs(gx_vds[n_vds - 1]), fabs(gy_vds[n_vds - 1])) / SLEWMAX / dt);
+	
+	/* the ramp down may be too fast - lots of gradient errors.  slowing it down here */
+	n_rmp *=2;
+
 	gx_rmp = (float *)malloc(n_rmp*sizeof(float));
 	gy_rmp = (float *)malloc(n_rmp*sizeof(float));
 	for (n = 0; n < n_rmp; n++) {
@@ -3431,75 +3646,233 @@ int genspiral() {
 	return SUCCESS;
 }
 
+/* Function to read external waveform file for the gradients.  use G/cm */
+int readGrads(int id, float scale)
+{
+	/* Declare variables */
+	char fname[80];
+	FILE *fID;
+	char buff[200];
+	int n;
+	double gxval, gyval;
+
+	float gx[MAXWAVELEN];
+	float gy[MAXWAVELEN];
+		
+	float dt = GRAD_UPDATE_TIME*1e-6; /* raster time (s) */
+	float gam = 4258; /* gyromagnetic ratio (Hz/G) */
+
+	if (id == 0) {
+		/* Set all values to zero and return */
+		for (n = 0; n < MAXWAVELEN; n++) {
+			gx[n] = 0;
+			gy[n] = 0;
+		}
+		fprintf(stderr, "readGrads(): file not read - files set to zero %s\n", fname);
+		return 1;
+	}
+
+	/* Read in gradient waveformt from text file */
+	sprintf(fname, "RO_grads/%05d/grads.txt", id);
+	fprintf(stderr, "readGrads(): opening %s...\n", fname);
+	fID = fopen(fname, "r");
+
+	/* Check if file was opened successfully */
+	if (fID == 0) {
+		fprintf(stderr, "readGrads(): failure opening %s\n", fname);
+		return 0;
+	}
+
+	/* Loop through points in rho file */
+	n = 0;
+	while (fgets(buff, 200, fID)) {
+		
+		sscanf(buff, "%lf %lf", &gxval, &gyval);
+		gx[n] = gxval * scale;
+		gy[n] = gyval * scale;
+
+		/* convert gradients to integer units */
+		Gx[n] = 2*round(MAX_PG_WAMP/XGRAD_max * gx[n] / 2.0);
+		Gy[n] = 2*round(MAX_PG_WAMP/YGRAD_max * gy[n] / 2.0);
+
+		n++;
+	}
+	fclose(fID);
+
+	grad_len = n;
+
+	
+	/* Integrate gradients to calculate kspace and write it to a file */
+	float kxn = 0.0;
+	float kyn = 0.0;
+	FILE *fID_ktraj = fopen("ktraj.txt", "w");
+	FILE *fID_ktraj_all = fopen("ktraj_all.txt", "w");
+
+	for (n = 0; n < grad_len; n++) {
+		/* integrate gradients */
+		kxn += gam * gx[n] * dt;
+		kyn += gam * gy[n] * dt;
+	
+		fprintf(fID_ktraj, "%f \t%f \t0.0\n", kxn, kyn);
+		fprintf(fID_ktraj_all, "%f \t%f \t0.0\n", kxn, kyn);
+	
+	}
+
+	fclose(fID_ktraj);
+	fclose(fID_ktraj_all);
+
+	return 1;
+}
+
+
+
 int genviews() {
 
 	/* Declare values and matrices */
 	FILE* fID_kviews = fopen("kviews.txt","w");
 	int rotidx, armn, shotn, echon, n;
-	float rz, theta, phi, dz;
+	float rz, dz;
+	float phi = 0.0;
+	float theta = 0.0;
 	float Rz[9], Rtheta[9], Rphi[9], Tz[9];
 	float T_0[9], T[9];
+
+	FILE* pRotFile;
+	char fname[80];
+	int matnum = 0;
+	char textline[256];
+	float element; 
+	int mrf_nframes = 1;
+	int nfr =0;
+
+	fprintf(stderr, "genviews...():\n");
+
+	if(mrf_mode) mrf_nframes=nframes;
+
+	if (spi_mode>=3){
+		/* external file with rotations*/
+		sprintf(fname, "RO_grads/%05d/myrotmats.txt", grad_id);
+		pRotFile=fopen(fname,  "r");
+
+		/* Check if rotation mats  file was read successfully */
+		if (pRotFile == 0) {
+			fprintf(stderr, "genviews(): failure opening myrotmats.txt\n");
+			return 0;
+		}
+
+		/* Loop through the text lines in  file */
+		fprintf(stderr, "genviews(): reading myrotmats.txt\n");
+		while (fgets(textline, sizeof(textline), pRotFile)) {
+			/* each row is a matrix*/
+			for(n=0; n<9; n++) {
+				sscanf(textline, "%f", &element);
+				Tex[matnum][n] = element;
+				/* fprintf(stderr, "\t%0.2f", element);*/
+			}	
+			matnum++;
+		}
+		fclose(pRotFile);
+	}
 
 	/* Initialize z translation to identity matrix */
 	eye(Tz, 3);
 
-        /* Get original transformation matrix */
-        for (n = 0; n < 9; n++) T_0[n] = (float)rsprot[0][n] / MAX_PG_WAMP;
-        orthonormalize(T_0, 3, 3);
+	/* Get original transformation matrix */
+	for (n = 0; n < 9; n++) T_0[n] = (float)rsprot[0][n] / MAX_PG_WAMP;
+	orthonormalize(T_0, 3, 3);
 
 	/* Loop through all views */
-	for (armn = 0; armn < narms; armn++) {
-		for (shotn = 0; shotn < opnshots; shotn++) {
-			for (echon = 0; echon < opetl; echon++) {
+	for(nfr=0; nfr < mrf_nframes; nfr++){
+		fprintf(stderr, "genviews(): rotation table tmtxtbl[][] entries for frame %d : \n", nfr);
+		for (armn = 0; armn < narms; armn++) {
+			for (shotn = 0; shotn < opnshots; shotn++) {
+				for (echon = 0; echon < opetl; echon++) {
 
-				/* calculate view index */
-				rotidx = armn*opnshots*opetl + shotn*opetl + echon;
+					/* calculate view index */
+					rotidx = armn*opnshots*opetl + shotn*opetl + echon;
+					if(mrf_mode==1){
+						rotidx += narms*opnshots*opetl*nfr;
+					}
 
-				/* Set the rotation angles and kz step (as a fraction of kzmax) */ 
-				rz = M_PI * (float)armn / (float)narms;
-				if (ro_type == 2) /* spiral out */
-					rz *= 2;	
-				phi = 0.0;
-				theta = 0.0;
-				dz = 0.0;
-				switch (spi_mode) {
-					case 0: /* SOS */
-						phi = 0.0;
-						theta = 0.0;
-						dz = 2.0/(float)opetl * (center_out_idx(opetl,echon) - 1.0/(float)opnshots*center_out_idx(opnshots,shotn)) - 1.0;
-						break;
-					case 1: /* 2D TGA */
-						phi = 0.0;
-						theta = phi2D * M_PI * (shotn*opetl + echon);
-						dz = 0.0;
-						break;
-					case 2: /* 3D TGA */
-						theta = acos(fmod(echon*phi3D_1, 1.0)); /* polar angle */
-						phi = 2.0*M_PI * fmod(echon*phi3D_2, 1.0); /* azimuthal angle */
-						dz = 0.0;
-						break;
+					/* Set the z-axis rotation angles and kz step (as a fraction of kzmax) */ 
+					rz = M_PI * (float)armn / (float)narms;
+					if (ro_type == 2) /* spiral out */
+						rz *= 2;	
+					phi = 0.0;
+					theta = 0.0;
+					dz = 0.0;
+
+					switch (spi_mode) {
+						case 0: /* SOS */
+							phi = 0.0;
+							theta = 0.0;
+							dz = 2.0/(float)opetl * (center_out_idx(opetl,echon) - 1.0/(float)opnshots*center_out_idx(opnshots,shotn)) - 1.0;
+							break;
+						case 1: /* 2D TGA */
+							phi = 0.0;
+							theta = 2* M_PI /phi2D * (shotn*opetl + echon);
+							dz = 0.0;
+							break;
+						case 2: /* 3D TGA */
+							/* using the fiboancci sphere formulas */
+							theta = (float)(shotn*opetl + echon)*2*M_PI / phi2D; /* polar angle */
+							phi = acos(1 - 2*(float)(shotn*opetl + echon)/(float)(opnshots*opetl)); /* azimuthal angle */
+							if (mrf_mode==1){
+								theta += prev_theta;
+								phi += prev_phi;
+							}
+							/* theta = acos(fmod(echon*phi3D_1, 1.0));  */
+							/* phi = 2.0*M_PI * fmod(echon*phi3D_2, 1.0); */
+							dz = 0.0;
+							break;
+						
+					}
+
+					/* Calculate the transformation matrices */
+					Tz[8] = dz;
+					genrotmat('z', rz, Rz);
+					genrotmat('x', theta, Rtheta);
+					genrotmat('z', phi, Rphi);
+
+					/* Multiply the transformation matrices */
+					multmat(3,3,3,T_0,Tz,T); /* kz scale T = T_0 * Tz */
+					multmat(3,3,3,Rz,T,T); /* z rotation (arm-to-arm) T = Rz * T */
+					multmat(3,3,3,Rtheta,T,T); /* polar angle rotation T = Rtheta * T */
+					multmat(3,3,3,Rphi,T,T); /* azimuthal angle rotation T = Rphi * T */
+
+					/* if the rotations are external we re-calculate 
+					the transformation using the values from the file instead*/
+					if (spi_mode>=3){
+						multmat(3,3,3,Tex[shotn*opetl + echon],T_0,T);
+					}
+
+					/* Save the matrix to file and assign to tmtxtbl[][] - the table of rotation  matrices */
+					fprintf(fID_kviews, "%d \t%d \t%d \t%f \t%f \t", armn, shotn, echon, rz, dz);	
+					for (n = 0; n < 9; n++) {
+						fprintf(fID_kviews, "%f \t", T[n]);
+						tmtxtbl[rotidx][n] = (long)round(MAX_PG_WAMP*T[n]);
+					}
+					fprintf(fID_kviews, "\n");
+					
+					/* debugging : 
+					fprintf(stderr,"rotidx ; %d -", rotidx);
+					for (n=0; n<9; n++){
+						fprintf(stderr, "\t%ld",tmtxtbl[rotidx][n]);
+					}
+					fprintf(stderr, "\n");
+					*/
 				}
 
-				/* Calculate the transformation matrices */
-				Tz[8] = dz;
-				genrotmat('z', rz, Rz);
-				genrotmat('x', theta, Rtheta);
-				genrotmat('z', phi, Rphi);
-
-				/* Multiply the transformation matrices */
-				multmat(3,3,3,T_0,Tz,T); /* kz scale T = T_0 * Tz */
-				multmat(3,3,3,Rz,T,T); /* z rotation (arm-to-arm) T = Rz * T */
-				multmat(3,3,3,Rtheta,T,T); /* polar angle rotation T = Rtheta * T */
-				multmat(3,3,3,Rphi,T,T); /* azimuthal angle rotation T = Rphi * T */
-
-				/* Save the matrix to the table of matrices */
-				fprintf(fID_kviews, "%d \t%d \t%d \t%f \t%f \t", armn, shotn, echon, rz, dz);	
-				for (n = 0; n < 9; n++) {
-					fprintf(fID_kviews, "%f \t", T[n]);
-					tmtxtbl[rotidx][n] = (long)round(MAX_PG_WAMP*T[n]);
-				}
-				fprintf(fID_kviews, "\n");
+				
 			}
+		}
+		/* in MRF mode -  we use different rotations in each frame.
+		Increment the first of the rotations by the last rotation in the previous frame */
+		if (mrf_mode) {
+			/* prev_theta = (float)(opnshots*opetl*narms*(nfr + 1))*phi3D_1 *2*M_PI / phi2D;  */
+			/* prev_phi = acos(1 - 2*(float)(opnshots*opetl*narms*(nfr + 1))/(float)(opnshots*opetl));  */
+			prev_theta = theta;
+			prev_phi = phi;
 		}
 	}
 
@@ -3613,6 +3986,93 @@ int readprep(int id, int *len,
 	return 1;
 }
 
+/* assign default values to the MRF table*/
+int init_mrf(	
+	float 	*mrf_deadtime, 
+	int 	*mrf_pcasl_type,
+	float 	*mrf_pcasl_duration,
+	float 	*mrf_pcasl_pld,
+	int		*mrf_prep1_type,
+	float 	*mrf_prep1_pld, 
+	int 	*mrf_prep2_type,
+	float 	*mrf_prep2_pld
+	)
+{
+	int n;
+	for (n=0; n < nframes; n++){
+		mrf_deadtime[n] = tr_deadtime;
+
+		mrf_pcasl_type[n] = pow(-1,n);
+		mrf_pcasl_pld[n] = pcasl_pld;
+		mrf_pcasl_duration[n] = pcasl_duration;
+
+		mrf_prep1_type[n] = pow(-1,n)  * !(prep1_id==0); /* puts in zeros if there is no pulse id specified*/
+		mrf_prep1_pld[n] = prep1_pld ; /* puts in zeros if there is no pulse id specified*/
+
+		mrf_prep2_type[n] = !(prep2_id==0);  				/*always 1 if there is a pulse id specified*/
+		mrf_prep2_pld[n] = prep2_pld ;   /* puts in zeros if there is no pulse id specified*/
+	}
+	return 1;
+}
+/*read all mrf schedule of events from specified values in a single schedule file
+the format is in 7 columns as follows 
+deadtime	dopcasl	 pcasl_pld	doprep1	prep1_pld doprep2	prep2_pld */
+int read_mrf_fromfile(
+	int 	file_id, 
+	float 	*mrf_deadtime, 
+	int 	*mrf_pcasl_type,
+	float 	*mrf_pcasl_duration,
+	float 	*mrf_pcasl_pld,
+	int 	*mrf_prep1_type,
+	float 	*mrf_prep1_pld, 
+	int 	*mrf_prep2_type,
+	float 	*mrf_prep2_pld
+	)
+{
+	int n;
+	char fname[80];	
+	char line[500];
+	FILE *fID;
+
+	float pc, p1, p2;
+	float dt, pcd, pct, p1t, p2t;
+
+	sprintf(fname, "mrfasl_schedules/%05d/mrf_schedule.txt", file_id);
+	fprintf(stderr, "read_mrf_fromfile(): opening %s...\n", fname);
+	fID = fopen(fname, "r");
+
+	/* Check if rho file was opened successfully */
+	if (fID == 0) {
+		fprintf(stderr, "read_mrf_fromfile(): failure opening %s\n", fname);
+		return 0;
+	}
+
+	/* Loop through the rows of number in the file */
+	n = 0;
+	while (fgets(line, 500, fID)) {
+		
+		sscanf(line, "%f %f %f %f %f %f %f %f", &dt, &pc , &pcd, &pct, &p1, &p1t, &p2, &p2t);
+		mrf_deadtime[n] 	= dt;
+		mrf_pcasl_type[n] 	= (int)pc;
+		mrf_pcasl_duration[n] = pcd;
+		mrf_pcasl_pld[n] 	= pct;
+		mrf_prep1_type[n] 	= (int)p1;
+		mrf_prep1_pld[n] 	= p1t;
+		mrf_prep2_type[n] 	= (int)p2;
+		mrf_prep2_pld[n] 	= p2t;
+
+		fprintf(stderr,"\nreading MRF  \tframe: %d \t deadtime: %f \tpcasl_type: %d \tpcasl_duration: %f \tpcasl_pld: %f \tprep1_type: %d \tprep1_pld: %f \tprep2_type: %d \tprep2_pld; %f", 
+			n, mrf_deadtime[n], mrf_pcasl_type[n], mrf_pcasl_duration[n], mrf_pcasl_pld[n], mrf_prep1_type[n], mrf_prep1_pld[n],  mrf_prep2_type[n],  mrf_prep2_pld[n]);
+
+		n++;
+	}
+	fclose(fID);
+ 
+ 	nframes = n;
+
+	return 1;
+}
+
 float calc_sinc_B1(float cyc_rf, int pw_rf, float flip_rf) {
 
 	int M = 1001;
@@ -3647,28 +4107,28 @@ float calc_hard_B1(int pw_rf, float flip_rf) {
 }
 
 /* LHG 12/6/12 : compute the linear phase increment of the PCASL pulses */
-int init_pcasl_phases(int *iphase_tbl, float  myphase_increment, int nreps)
+int calc_pcasl_phases(int *iphase_tbl, float  myphase_increment, int nreps)
 {
-        int     n;
-        double  rfphase; 
- 
+	int     n;
+	double  rfphase; 
+
 	fprintf(stderr,"\nUpdating PCASL phase table .... "); 
-        rfphase=0;
-    	 
-        for (n=0; n<nreps*2; n++)
-        {
-                rfphase += myphase_increment;
-                rfphase = atan2 (sin(rfphase), cos(rfphase));      /* wrap phase to (-pi,pi) range */
+	rfphase = 0.0;
+
+	for (n=0; n<nreps; n++)
+	{
+		rfphase += myphase_increment;
+		rfphase = atan2 (sin(rfphase), cos(rfphase));      /* wrap phase to (-pi,pi) range */
 		/* translate to DAC units */
-                iphase_tbl[n] = (int)(rfphase/M_PI * (float)FS_PI);
-        }
+		iphase_tbl[n] = (int)(rfphase/M_PI * (float)FS_PI);
+	}
 	fprintf(stderr,"Done .\n "); 
 	return 1;
 }               
         
 
 /*in the absence of MRF schedule files, configure the PCASL label and control schedules , including BGS pulses
-these timings will be in us units*/
+these timings will be in us units ----- unused*/
 int make_pcasl_schedule(int *pcasl_lbltbl, int *pcasl_pldtbl, int *pcasl_tbgs1tbl, int *pcasl_tbgs2tbl)
 {
 	int framen=0;
@@ -3681,7 +4141,7 @@ int make_pcasl_schedule(int *pcasl_lbltbl, int *pcasl_pldtbl, int *pcasl_tbgs1tb
 	sprintf(tmpstr, "pcasl_lbltbl");
 	for (framen = 0; framen < nframes; framen++){
 		pcasl_lbltbl[framen]= toggle;
-		toggle = !toggle;
+		toggle = -toggle;
 	}
 
 	sprintf(tmpstr, "pcasl_tbgs1tbl");
@@ -3702,6 +4162,7 @@ int write_scan_info() {
 	FILE *finfo = fopen("scaninfo.txt","w");
 	fprintf(finfo, "Rx parameters:\n");
 	fprintf(finfo, "\t%-50s%20f %s\n", "X/Y FOV:", (float)opfov/10.0, "cm");
+	fprintf(finfo, "\t%-50s%20d \n", "Matrix size:", opxres);
 	fprintf(finfo, "\t%-50s%20f %s\n", "3D slab thickness:", (float)opslquant*opslthick/10.0, "cm"); 	
 
 	fprintf(finfo, "Hardware limits:\n");
@@ -3752,6 +4213,12 @@ int write_scan_info() {
 			case 2: /* 3DTGA */
 				fprintf(finfo, "\t%-50s%20s\n", "Projection mode:", "3DTGA");
 				break;
+			case 3: /* arbitrary rotations from file */
+				fprintf(finfo, "\t%-50s%20s\n", "Projection mode:", "rotations from file");
+				break;
+			case 4: /* arbitrary rotations and trajectory from file */
+				fprintf(finfo, "\t%-50s%10s\n", "Projection mode:", "gradients + rotations from file");
+				break;
 		}
 		fprintf(finfo, "\t%-50s%20f\n", "VDS center acceleration factor:", vds_acc0);
 		fprintf(finfo, "\t%-50s%20f\n", "VDS edge acceleration factor:", vds_acc1);
@@ -3776,6 +4243,12 @@ int write_scan_info() {
 			fprintf(finfo, "\t%-50s%20f %s\n", "SPIR inversion time:", (float)spir_ti*1e-3, "ms");
 			break;
 	}
+
+	if (mrf_mode ){
+		fprintf(finfo, "\nMRF MODE ON - SEE MRF SCHEDULE LOGS FOR TIMING \n");
+		fprintf(finfo, "\t%-50s%20s%05d \n", "MRF timing file in:", "mrfasl_schedules/", mrf_sched_id );
+	}
+
 	if (prep1_id == 0)
 		fprintf(finfo, "\t%-50s%20s\n", "Prep 1 pulse:", "off");
 	else {
@@ -3845,14 +4318,22 @@ int write_scan_info() {
 		fprintf(finfo, "\t%-50s%20d\n", "pcasl_tbgs2 (us)", pcasl_tbgs2);
 		fprintf(finfo, "\t%-50s%20f\n", "pcasl_Gamp", pcasl_Gamp);
 		fprintf(finfo, "\t%-50s%20f\n", "pcasl_Gave", pcasl_Gave);
-		fprintf(finfo, "\t%-50s%20d\n", "pcasl_period", pcasl_period);
-		fprintf(finfo, "\t%-50s%20f\n", "pcasl_RFamp", pcasl_RFamp);
+		fprintf(finfo, "\t%-50s%20d\n", "pcasl_period (us)", pcasl_period);
+		fprintf(finfo, "\t%-50s%20f\n", "pcasl_RFamp (mG)", pcasl_RFamp);
 
 		if(pcasl_calib){
 			fprintf(finfo, "\t%-50s%20d\n", "Phase calibration run", pcasl_calib);
 			fprintf(finfo, "\t%-50s%20f\n", "Cal. phase increment", phs_cal_step);
 			fprintf(finfo, "\t%-50s%20d\n", "N. frames per cal. increment", pcasl_calib_frames);
 		}
+	}
+
+	if(doVelSpectrum){
+		fprintf(finfo, "Collecting Velocity Spectrum:\n");
+		fprintf(finfo, "\t%-50s%20d\n", "VS Type (FTVS phase(1) BIR8 venc(2))", doVelSpectrum); 
+		fprintf(finfo, "\t%-50s%20d\n", "N. frames per encode/target_velocity", vspectrum_Navgs);
+		fprintf(finfo, "\t%-50s%20f\n", "Velocity target increments (cm/s) if VS type 1", vel_target_incr); 
+		fprintf(finfo, "\t%-50s%20f\n", "Velocity encoding Grad increments (G/cm) if VS type 2", prep1_delta_gmax); 
 	}
 
 	fclose(finfo);

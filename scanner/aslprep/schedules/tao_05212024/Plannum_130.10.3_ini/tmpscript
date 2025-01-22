@@ -1,0 +1,32 @@
+#!/bin/bash
+
+# Base directory containing the subdirectories
+BASE_DIR="."
+
+# Loop through each subdirectory in the base directory
+for SUBDIR in "$BASE_DIR"/*/; do
+    # Remove the trailing slash
+    SUBDIR=${SUBDIR%/}
+
+    # Get the subdirectory name
+    SUBDIR_NAME=$(basename "$SUBDIR")
+
+    # Create new directories for initial and optimal files
+    INI_DIR="${SUBDIR}_ini"
+    OPT_DIR="${SUBDIR}_opt"
+
+    mkdir -p "$INI_DIR"
+    mkdir -p "$OPT_DIR"
+
+    # Move and rename the corresponding files to the new directories
+    if [ -f "$SUBDIR/Ini_partitions.txt" ]; then
+        mv "$SUBDIR/Ini_partitions.txt" "$INI_DIR/partitions.txt"
+    fi
+
+    if [ -f "$SUBDIR/Opt_partitions.txt" ]; then
+        mv "$SUBDIR/Opt_partitions.txt" "$OPT_DIR/partitions.txt"
+    fi
+done
+
+echo "Directories have been split, files moved and renamed."
+
