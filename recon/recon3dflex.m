@@ -61,6 +61,8 @@ function x = recon3dflex(varargin)
     defaults.selectviews = [];
     defaults.aqdel = 0;
     defaults.despike = [];
+    defaults.nonavs = 0;
+    defaults.hp_filter = 0;
 
     % parse input parameters
     args = vararg_pair(defaults,varargin);
@@ -100,12 +102,21 @@ function x = recon3dflex(varargin)
         klocs = klocs(:, sv, :);
     end
 
-
-    % clean up data scaling
+    % scale echoes using navigator data
     if args.k0correct>0
         kdata = aslrec.k0correct(kdata, klocs, args.k0correct);
     end
     
+    % remove navigator data before reconstruction
+    if args.nonavs>0
+        [kdata klocs] = aslrec.rm_navs(kdata, klocs);
+    end
+
+    % run a high pass filter (FBP) with speficified order
+    if args.hp_filter>0
+        kdata  = aslrec.hp_filter(kdata, klocs, args.hp_filter,3);
+    end
+
     % Remove spikes from data
     if ~isempty(args.despike)
         kdata = aslrec.despike_data(kdata,3);
@@ -282,6 +293,11 @@ function x_star = cg_solve(x0, A, b, niter, msg_pfx)
 
         % calculate new residual
         r = r - alpha * AtAp;
+        
+        % include a regularizer ?
+        %R = 1e-5* sum(x_star(:).^2);
+        %r = r+R;
+
         rsnew = r(:)' * r(:);
         p = r + (rsnew / rsold) * p;
         rsold = rsnew;

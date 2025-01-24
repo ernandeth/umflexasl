@@ -42,7 +42,8 @@ function x = recon3dflex(varargin)
 %   - aqdel (N) : adjust acquisition delay by shifting the readout N points 
 %       in time (it will result in losing aqdel data points per view)
 %   - despike (N-std) : replace kspace data in time series by average of
-%   neighboring frames if they deviate more 
+%       neighboring frames if they deviate more than a specified threshold.
+%       Does the odds and the eves time frames separately (for ASL)
 
     % check that mirt is set up
     aslrec.check4mirt();
@@ -59,7 +60,10 @@ function x = recon3dflex(varargin)
     defaults.mrf_mode = 0;
     defaults.selectviews = [];
     defaults.aqdel = 0;
-    
+    defaults.despike = [];
+    defaults.nonavs = 0;
+    defaults.hp_filter = 0;
+
     % parse input parameters
     args = vararg_pair(defaults,varargin);
 
@@ -98,12 +102,24 @@ function x = recon3dflex(varargin)
         klocs = klocs(:, sv, :);
     end
 
-
-    % clean up data 
+    % scale echoes using navigator data
     if args.k0correct>0
         kdata = aslrec.k0correct(kdata, klocs, args.k0correct);
     end
     
+    % remove navigator data before reconstruction
+    if args.nonavs>0
+        [kdata klocs] = aslrec.rm_navs(kdata, klocs);
+    end
+
+    % run a high pass filter (FBP) with speficified order
+    if args.hp_filter>0
+    end
+    % Remove spikes from data
+    if ~isempty(args.despike)
+        kdata = aslrec.despike_data(kdata,3);
+    end
+
     % fix acquisition delays (time shits)
     if args.aqdel ~= 0
         [kdata klocs] = aslrec.aqdel(kdata, klocs, args.aqdel);

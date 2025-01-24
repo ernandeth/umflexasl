@@ -1,0 +1,70 @@
+function kdata = hp_filter(kdata, klocs, order)
+% function kdata = hp_filter(kdata, klocs, order)
+% 
+% Multiply the data by a filter kernel that is defined by the radial
+% potision in k-space.  this is like the ramp filter in filtered
+% backprojection.  We willl include options for filter order (not just
+% ramp - determined by parameter 'order')
+% 
+% the data dimensions are assumed to be 4D: 
+% Npoints x nechoes x Nframes x Ncoils
+
+[Ndat, Nviews, Nframes, Ncoils] = size(kdata);
+
+% compute the radial position of the trajectory (distance to center)
+% and identify the redundant k0 points
+% assume all the views have a set of navigator points in the same position
+% so we just use the first view
+klocs = squeeze(klocs(:,1,:));
+
+R = sqrt(sum(klocs.^2, 2));
+% the weights in k-space as a function of position.
+F = R.^order;
+F = F/max(F);
+
+fprintf('\nExecuting k0 correction %d \n', options);
+
+if length(k0inds) < 10
+    fprintf('WARNING:less than 10 navigator points. Skipping the correction ');
+    return 
+end
+
+
+for c=1:Ncoils
+    for f=1:Nframes
+
+        % use the second view of each frame as the reference
+        tmp = kdata(:,1,f,c);
+        baseline = mean(tmp(k0inds));
+
+        if options==2
+            baseline = 1*exp(i*angle(baseline));
+        end
+
+        for v=1:Nviews
+        
+            tmp = kdata(:,v,f,c);
+            
+            vm = mean(tmp(k0inds));
+            
+            if options==2
+                vm = 1*exp(i*angle(vm));
+            end
+
+            tmp2 = tmp * baseline / vm  ;
+%{
+            [v f c]
+            plot(abs(tmp)); hold on
+            plot(abs(tmp2)); hold off
+            baseline
+            vm 
+            pause
+%}
+            kdata(:,v,f,c) = tmp2;
+            
+        end
+    end
+end
+
+
+return
