@@ -209,7 +209,7 @@ int center_out_idx(int length, int index) {
 int reverseArray(float *arr, int n, float *arr2) {
 	for (int i = 0; i < n/2 + 1; ++i) {
 		arr2[i] = arr[n - i - 1];
-		arr2[n - i - 1] = arr[i];
+		arr2[n - i - 1] = -arr[i];
 	}
 
 	return 0;
