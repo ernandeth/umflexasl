@@ -3855,9 +3855,13 @@ int genviews() {
 					}
 
 					/* Set the z-axis rotation angles and kz step (as a fraction of kzmax) */ 
-					rz = M_PI * (float)armn / (float)narms;
-					if (ro_type == 2) /* spiral out */
-						rz *= 2;	
+
+					/* rz = M_PI * (float)armn / (float)narms;*/
+					/* if (ro_type == 2)*/ 
+					/* spiral out */
+					/*	rz *= 2;*/	
+					
+					rz = 2* M_PI * (float)armn / (float)narms;
 					phi = 0.0;
 					theta = 0.0;
 					dz = 0.0;
