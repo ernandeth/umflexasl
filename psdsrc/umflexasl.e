@@ -3855,17 +3855,16 @@ int genviews() {
 					}
 
 					/* Set the z-axis rotation angles and kz step (as a fraction of kzmax) */ 
-
-					/* rz = M_PI * (float)armn / (float)narms;*/
-					/* if (ro_type == 2)*/ 
-					/* spiral out */
-					/*	rz *= 2;*/	
-					
 					rz = 2* M_PI * (float)armn / (float)narms;
 					phi = 0.0;
 					theta = 0.0;
 					dz = 0.0;
 
+					/* the spiral in-out case rotates by only 90 degreesq  -
+					This happens in FSE and SSFP readouts*/
+					if (ro_type != 2) 
+						rz /= 2;
+					
 					switch (spi_mode) {
 						case 0: /* SOS */
 							phi = 0.0;
@@ -3875,12 +3874,22 @@ int genviews() {
 						case 1: /* 2D TGA */
 							phi = 0.0;
 							theta = 2* M_PI /phi2D * (shotn*opetl + echon);
+							
+							/* test: use the arms, instead of the shots to advance the angle*/
+							theta = 2* M_PI /phi2D * (armn*opetl + echon);
+							
 							dz = 0.0;
 							break;
 						case 2: /* 3D TGA */
+
 							/* using the fiboancci sphere formulas */
 							theta = (float)(shotn*opetl + echon)*2*M_PI / phi2D; /* polar angle */
 							phi = acos(1 - 2*(float)(shotn*opetl + echon)/(float)(opnshots*opetl)); /* azimuthal angle */
+							
+							/* test: use the arms, instead of the shots to advance the angle*/
+							theta = (float)(armn*opetl + echon)*2*M_PI / phi2D; /* polar angle */
+							phi = acos(1 - 2*(float)(armn*opetl + echon)/(float)(narms*opetl)); /* azimuthal angle */
+							
 							if (mrf_mode==1){
 								theta += prev_theta;
 								phi += prev_phi;
