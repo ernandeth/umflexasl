@@ -1422,7 +1422,7 @@ STATUS predownload( void )
 	pw_gzw2 = tmp_pw;
 	pw_gzw2a = tmp_pwa;
 	pw_gzw2d = tmp_pwd;
-	a_gzw2 = tmp_a;
+	a_gzw2 = -tmp_a;
 
 	/* set parameters for flowcomp pre-phaser */
 	tmp_area = 2*M_PI/(GAMMA*1e-6) * kzmax; /* multiply by 2 if flow compensated */
