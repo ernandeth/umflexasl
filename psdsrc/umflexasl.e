@@ -2961,6 +2961,7 @@ STATUS prescanCore() {
 
 	int ttotal; 
 	float arf1_var = 0.0;
+	float tmpmax;
 
 	/* initialize the rotation matrix */
 	setrotate( tmtx0, 0 );
@@ -3050,16 +3051,26 @@ STATUS prescanCore() {
 					eg2: 
 						90x - 180y - 180y - 180y -180y ...  */
 
-					arf1_var = a_rf0 + a_rf1/2;
+					arf1_var = (a_rf180 + a_rf1)/2;
 				}
 				if(varflip) {
 					/* variable flip angle refocuser pulses to get more signal 
 					- linearly increasing schedule */
-					arf1_var = a_rf1 + (float)echon*(arf180 - a_rf1)/(float)(opetl-1); 
+					/* arf1_var = a_rf1 + (float)echon*(arf180 - a_rf1)/(float)(opetl-1); */
 					
 					/* in VFA, the first refocusers are higher - trying to approximate that here*/
-					if(echon==0) arf1_var = (arf180 + a_rf1)/2.0;
-						
+					/* if(echon==0) arf1_var = (arf180 + a_rf1)/2.0;  */
+						    
+					/* New approach: do a quadrative schedule with 
+					the minimum of parabola occurring at one quarter of the way in the echo train  */
+		    			arf1_var = ((float)(echon) - (float)(opetl)/4.0) * ((float)(echon) - (float)(opetl)/4.0);  /* shifted parabola */
+					tmpmax = ((float)(opetl-1) - (float)(opetl)/4.0) *  ((float)(opetl-1) - (float)(opetl)/4.0) ;    /* max value of the parabola */
+					arf1_var *= (arf180 - a_rf1) / tmpmax; /* scale */
+					arf1_var += a_rf1;  /* shift up */
+
+					/* but we cap it at 90 degree pulse */
+    					if (arf1_var > arf180/2.0) arf1_var = arf180/2.0;;
+
 				}
 
 			
@@ -3150,6 +3161,7 @@ STATUS scan( void )
 	int pcasl_type, prep1_type, prep2_type;
 
 	float arf1_var = 0;
+	float tmpmax;
 
 	fprintf(stderr, "scan(): beginning scan (t = %d / %.0f us)...\n", ttotal, pitscan);
 
@@ -3455,16 +3467,29 @@ STATUS scan( void )
 							eg2: 
 								90x - 180y - 180y - 180y -180y ...  */
 
-							arf1_var = a_rf0 + a_rf1/2;
+							arf1_var = (a_rf180 + a_rf1)/2;
 						}
 						
 						if(varflip) {
+
 							/* variable flip angle refocuser pulses to get more signal 
 							- linearly increasing schedule */
-							arf1_var = a_rf1 + (float)echon*(arf180-a_rf1)/(float)(opetl-1); 
-
+							/* arf1_var = a_rf1 + (float)echon*(arf180 - a_rf1)/(float)(opetl-1); */
+							
 							/* in VFA, the first refocusers are higher - trying to approximate that here*/
-							if(echon==0) arf1_var = (arf180 + a_rf1)/2.0;
+							/* if(echon==0) arf1_var = (arf180 + a_rf1)/2.0;  */
+									
+							/* New approach: do a quadrative schedule with 
+							the minimum of parabola occurring at one quarter of the way in the echo train  */
+		    					arf1_var = ((float)(echon) - (float)(opetl)/4.0) * ((float)(echon) - (float)(opetl)/4.0);  /* shifted parabola */
+							tmpmax = ((float)(opetl-1) - (float)(opetl)/4.0) *  ((float)(opetl-1) - (float)(opetl)/4.0) ;    /* max value of the parabola */
+							arf1_var *= (arf180 - a_rf1) / tmpmax; /* scale */
+							arf1_var += a_rf1;  /* shift up */
+
+							/* but we cap it at 90 degree pulse */
+							if (arf1_var > arf180/2.0) arf1_var = arf180/2.0;;
+
+
 						}
 
 					
