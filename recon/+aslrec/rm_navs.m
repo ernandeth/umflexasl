@@ -3,6 +3,7 @@ function [kdata klocs] = rm_navs(kdata, klocs)
 % function [kdata klocs] = rm_navs(kdata, klocs)
 %
 % find and remove redundant data in the center of k-space 
+fprintf('Removing Nav points\n');
 
 [Ndat, Nviews, Nframes, Ncoils] = size(kdata);
 
@@ -13,14 +14,13 @@ function [kdata klocs] = rm_navs(kdata, klocs)
 klocs_tmp = squeeze(klocs(:,1,:));
 
 R = sqrt(sum(klocs_tmp.^2, 2));
-k0inds = find(R==0);
-% Use only the middle part of the segment
+k0inds = find(R<1e-5);
+% keep the ends 
 k0inds = k0inds(2:end-1);
 
-fprintf('\nRemoving Nav points');
 
 if length(k0inds) < 10
-    fprintf('WARNING:less than 10 navigator points. Skipping the correction ');
+    fprintf('WARNING:less than 10 navigator points. Skipping the correction \n');
     return 
 end
 
