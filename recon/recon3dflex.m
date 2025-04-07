@@ -44,6 +44,11 @@ function x = recon3dflex(varargin)
 %   - despike (N-std) : replace kspace data in time series by average of
 %       neighboring frames if they deviate more than a specified threshold.
 %       Does the odds and the eves time frames separately (for ASL)
+%   - hp_filter (amplitude) ; use a high pass filter .  filter is a ramp 
+%       function of radial distance .  amplitude defines the response:
+%               out(r) = in(r) + in(r)*ramp(r)
+%   - nonavs (0/1) : remove navigator data from k=0 ?
+%   - Reg (0) : Thikonov regularization weight. Default is 0 
 
     % check that mirt is set up
     aslrec.check4mirt();
@@ -61,6 +66,9 @@ function x = recon3dflex(varargin)
     defaults.selectviews = [];
     defaults.aqdel = 0;
     defaults.despike = [];
+    defaults.nonavs = 0;
+    defaults.hp_filter = 0;
+    defaults.Reg = 0;
 
     % parse input parameters
     args = vararg_pair(defaults,varargin);
@@ -100,12 +108,22 @@ function x = recon3dflex(varargin)
         klocs = klocs(:, sv, :);
     end
 
+    % remove navigator data before reconstruction
+    if args.nonavs>0
+        [kdata klocs] = aslrec.rm_navs(kdata, klocs);
+    end
 
-    % clean up data scaling
+    % scale echoes using navigator data
     if args.k0correct>0
         kdata = aslrec.k0correct(kdata, klocs, args.k0correct);
     end
     
+
+    % run a high pass filter (FBP) with speficified order
+    if args.hp_filter>0
+        kdata  = aslrec.hp_filter(kdata, klocs, 1, args.hp_filter);
+    end
+
     % Remove spikes from data
     if ~isempty(args.despike)
         kdata = aslrec.despike_data(kdata,3);
@@ -187,10 +205,27 @@ function x = recon3dflex(varargin)
             A = Asense(A,args.smap);
         end
 
-        % loop through frames and recon
+        Aold = [];
+        Areg = [];
+        L = 0;
+        if args.Reg
+            Aold = A;
+            L = args.Reg;
+            % define A'A + L*eye operator for Tikhonov Regularization
+            Areg = @(x) A'*A*x + L*x;
+
+            % define A'A + D*eye operator for TV regularization           
+            Aregtv = @(x) A'*A*x + L*[diff(x) ; 0] ;
+            
+        end
+
+        % set up the parallel pool
         if isempty(gcp('nocreate')), parpool(6), end
-        parfor i = 1:length(args.frames)
+        
+        % loop through frames and recon
+        
         %for i = 1:length(args.frames)
+        parfor i = 1:length(args.frames)
 
             framen = args.frames(i);
 
@@ -203,16 +238,26 @@ function x = recon3dflex(varargin)
             fprintf("frame %d/%d: initializing solution x0 = A'*(w.*b)\n", i, length(args.frames))
             x0 = reshape( A' * (w.*b), N );
             x0 = ir_wls_init_scale(A, b, x0);
+            
+            if args.Reg
+                % solve the problem with CG using regularization - this
+                % case will call Matlab's pcg instead of the cg_solve
+                % below.
+                b = Aold' * b;
+                [tmp, flag, rRes] = pcg(Areg, b(:), 1e-4, args.niter,[],[], x0(:));
+                fprintf("Regularized CG ended with residual fraction: %0.3g \n", rRes);
+                x(:,:,:,i) = reshape(tmp, N);
 
-            % solve with CG
-            x(:,:,:,i) = cg_solve(x0, A, b, args.niter, ...
-                sprintf('frame %d/%d: ', i, length(args.frames))); % prefix the output message with frame number
-
+            else
+                % solve with CG - no regularization
+                x(:,:,:,i) = cg_solve(x0, A, b, args.niter, ...
+                    sprintf("frame %d/%d: ", i, length(args.frames))); % prefix the output message with frame number
+            end
         end
 
     else  % MRF case
-        for i = 1:length(args.frames)
-        %parfor i = 1:length(args.frames)
+        %for i = 1:length(args.frames)
+        parfor i = 1:length(args.frames)
             % Usually just need to do this once, but in MRF mode the system matrix
             % changes from frame to frame.
             views = [1:nviews] + nviews*(i-1);
@@ -232,9 +277,19 @@ function x = recon3dflex(varargin)
             x0 = reshape( A' * (w.*b), N );
             x0 = ir_wls_init_scale(A, b, x0);
 
-            % solve with CG
-            x(:,:,:,i) = cg_solve(x0, A, b, args.niter, ...
-                sprintf('frame %d/%d: ', i, length(args.frames))); % prefix the output message with frame number
+            if args.Reg
+                % solve the problem with CG using regularization - this
+                % case will call Matlab's pcg instead of the cg_solve
+                % below.
+                b = Aold' * b;
+                [tmp, flag, rRes] = pcg(Areg, b(:), 1e-5, args.niter,[],[], x0(:));
+                fprintf('regularized CG ended with residual fraction: %0.3g \n', rRes);
+                x(:,:,:,i) = reshape(tmp, N);
+            else
+                % solve with CG
+                x(:,:,:,i) = cg_solve(x0, A, w.*b, args.niter, ...
+                    sprintf('frame %d/%d: ', i, length(args.frames))); % prefix the output message with frame number
+            end
 
         end
     end
@@ -244,6 +299,7 @@ end
 function [A,w, omega_msk] = make_system_matrix(klocs, N, fov, nufft_args)
 % function [A,w, omega_msk] = make_system_matrix(klocs, N, fov, nufft_args)
 % create a system fatrix and the density compensation for the recon
+
     fprintf('...Making system matrix...')
     % (LHG : this scales the k-space trajectory,
     % and masks out locations what may go outside the -pi to pi range)    
@@ -258,6 +314,7 @@ function [A,w, omega_msk] = make_system_matrix(klocs, N, fov, nufft_args)
 end
 
 function x_star = cg_solve(x0, A, b, niter, msg_pfx)
+% alternative:  pcg.m function in matlab
 
     % set default message prefix
     if nargin < 5
@@ -268,20 +325,25 @@ function x_star = cg_solve(x0, A, b, niter, msg_pfx)
     x_set = zeros([size(x0),niter+1]);
     x_star = x0;
     x_set(:,:,:,1) = x_star;
+
+    % gradient calculation
     r = reshape(A'*(b - A*x_star), size(x_star));
+    
     p = r;
     rsold = r(:)' * r(:);
     for n = 1:niter
-        fprintf('%sCG iteration %d/%d, res: %.3g\n', msg_pfx, n, niter, rsold);
-        
-        % calculate the gradient descent step
-        AtAp = reshape(A'*(A*p), size(x_star));
+        fprintf('%sCG iteration %d/%d, res: %.3g   \n', msg_pfx, n, niter, rsold);
+         
+        % calculate the new gradient descent step size
+        AtAp = reshape(A'*(A*p), size(x_star));        
         alpha = rsold / (p(:)' * AtAp(:));
-        x_star = x_star + alpha * p;
+
+        % update the guess
+        x_star = x_star + alpha * p ; % - 2*alpha*x_star;  % L2 regularizer here
         x_set(:,:,:,n+1) = x_star;
 
-        % calculate new residual
-        r = r - alpha * AtAp;
+        % calculate new gradient update
+        r = r - alpha * AtAp;       
         rsnew = r(:)' * r(:);
         p = r + (rsnew / rsold) * p;
         rsold = rsnew;

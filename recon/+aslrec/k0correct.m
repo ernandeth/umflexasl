@@ -13,6 +13,8 @@ function kdata = k0correct(kdata, klocs, options)
 %   2 - shift the phase of each FID so that the mean of the
 %       navigator phase is constant in each frame
 
+fprintf('\nExecuting k0 correction %d \n', options);
+
 [Ndat, Nviews, Nframes, Ncoils] = size(kdata);
 
 % compute the radial position of the trajectory (distance to center)
@@ -22,14 +24,11 @@ function kdata = k0correct(kdata, klocs, options)
 klocs = squeeze(klocs(:,1,:));
 
 R = sqrt(sum(klocs.^2, 2));
-k0inds = find(R==0);
-% Use only the middle part of the segment
-k0inds = k0inds(2:end-1);
+k0inds = find(R<1e-5);
 
-fprintf('\nExecuting k0 correction %d \n', options);
-
-if length(k0inds) < 10
-    fprintf('WARNING:less than 10 navigator points. Skipping the correction ');
+if length(k0inds) < 1
+    length(k0inds)
+    fprintf('WARNING:less than 1 navigator points. Skipping the correction \n');
     return 
 end
 
@@ -37,9 +36,10 @@ end
 for c=1:Ncoils
     for f=1:Nframes
 
-        % use the second view of each frame as the reference
-        tmp = kdata(:,1,f,c);
-        baseline = mean(tmp(k0inds));
+        % averaging the navigator data from all the views of each frame as the
+        % reference for that frame and that coil
+        tmp = kdata(k0inds,:,f,c);
+        baseline = mean(tmp(:));
 
         if options==2
             baseline = 1*exp(i*angle(baseline));
