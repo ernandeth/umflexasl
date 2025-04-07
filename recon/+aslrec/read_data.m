@@ -14,6 +14,9 @@ function [kdata,klocs,N,fov] = read_data(pfile, mrf_mode)
     if nargin < 1 || isempty(pfile)
         pfile = './P*.7'; % default: use first Pfile on current path
     end
+    if ~exist('mrf_mode')
+        mrf_mode=0;
+    end
     
     % find and read the pfile
     tmp = dir(pfile);
