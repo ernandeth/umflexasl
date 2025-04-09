@@ -178,7 +178,7 @@ int nframes = 2 with {1, , 2, VIS, "number of frames",};
 int ndisdaqtrains = 2 with {0, , 2, VIS, "number of disdaq echo trains at beginning of scan loop",};
 int ndisdaqechoes = 0 with {0, , 0, VIS, "number of disdaq echos at beginning of echo train",};
 
-int varflip = 0 with {0,1,0, VIS, "do variable flip angles (FSE case)", };
+int varflip = 1 with {0,1,1, VIS, "do variable flip angles (FSE case)", };
 float arf180; 
 
 int ro_type = 2 with {1, 3, 2, VIS, "FSE (1), SPGR (2), or bSSFP (3)",};
