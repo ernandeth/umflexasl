@@ -283,7 +283,7 @@ float	vel_target = 0.0 /* use for FTVS case */;
 float   vspectrum_grad = -4.0;  /* use this for BIR8 */
 int		vspectrum_Navgs = 2;
 float	vel_target_incr = 1.0;
-float   prep1_delta_gmax = 0.1 ;
+float   prep2_delta_gmax = 0.1 ;
 int	min_dur_pcaslcore = 0;
 int	zero_CTL_grads = 0; /* option to use zero gradients for the control pulses */
 
@@ -1327,7 +1327,7 @@ STATUS predownload( void )
 
 	if (doVelSpectrum==2){
 		/* velocity spectrum default venc gradient increments - so that it goes from -4.0 to +4.0 G/cm */
-		prep1_delta_gmax = 2.0*4.0 / ((float)nframes/(float)vspectrum_Navgs -1)  ;
+		prep2_delta_gmax = 2.0*4.0 / ((float)nframes/(float)vspectrum_Navgs -1)  ;
 	}
 
 	/* -------------------------*/
@@ -3051,7 +3051,7 @@ STATUS prescanCore() {
 					eg2: 
 						90x - 180y - 180y - 180y -180y ...  */
 
-					arf1_var = (a_rf180 + a_rf1)/2;
+					arf1_var = (arf180 + a_rf1)/2;
 				}
 				if(varflip) {
 					/* variable flip angle refocuser pulses to get more signal 
@@ -3291,12 +3291,12 @@ STATUS scan( void )
 			{
 				fprintf(stderr, "\n\nscan() velocity spectrum: updating for prep1 pulse for vel %f \n\n", vel_target);
 				vspectrum_rep = 0;
-				vspectrum_grad += prep1_delta_gmax;
+				vspectrum_grad += prep2_delta_gmax;
 			}	
-			ia_prep1gradlbl = (int)ceil(vspectrum_grad / ZGRAD_max * (float)MAX_PG_WAMP);
-			ia_prep1gradctl = (int)ceil(vspectrum_grad / ZGRAD_max * (float)MAX_PG_WAMP);
-			setiamp(ia_prep1gradctl, &prep1gradctl, 0);
-			setiamp(ia_prep1gradlbl, &prep1gradlbl, 0);
+			ia_prep2gradlbl = (int)ceil(vspectrum_grad / ZGRAD_max * (float)MAX_PG_WAMP);
+			ia_prep2gradctl = (int)ceil(vspectrum_grad / ZGRAD_max * (float)MAX_PG_WAMP);
+			setiamp(ia_prep2gradctl, &prep2gradctl, 0);
+			setiamp(ia_prep2gradlbl, &prep2gradlbl, 0);
 			vspectrum_rep++ ;
 
 		}
@@ -3467,7 +3467,7 @@ STATUS scan( void )
 							eg2: 
 								90x - 180y - 180y - 180y -180y ...  */
 
-							arf1_var = (a_rf180 + a_rf1)/2;
+							arf1_var = (arf180 + a_rf1)/2;
 						}
 						
 						if(varflip) {
@@ -4433,7 +4433,7 @@ int write_scan_info() {
 		fprintf(finfo, "\t%-50s%20d\n", "VS Type (FTVS phase(1) BIR8 venc(2))", doVelSpectrum); 
 		fprintf(finfo, "\t%-50s%20d\n", "N. frames per encode/target_velocity", vspectrum_Navgs);
 		fprintf(finfo, "\t%-50s%20f\n", "Velocity target increments (cm/s) if VS type 1", vel_target_incr); 
-		fprintf(finfo, "\t%-50s%20f\n", "Velocity encoding Grad increments (G/cm) if VS type 2", prep1_delta_gmax); 
+		fprintf(finfo, "\t%-50s%20f\n", "Velocity encoding Grad increments (G/cm) if VS type 2", prep2_delta_gmax); 
 	}
 
 	fclose(finfo);
