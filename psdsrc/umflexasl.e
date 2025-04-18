@@ -241,6 +241,9 @@ int prep2_Npoints = 0 ;
 /* Velocity Selective prep pulse axis*/
 int prep_axis = 0;
 
+/* cardiac trigger option */
+int do_cardiac_gating = 0 with {0, 1, 0, VIS, "Flag to control cardiac gating. (1) Do Cardiac Gating. (0) Don't do Cardiac Gating"};
+
 /* Declare PCASL variables (cv)*/
 int pcasl_pld 	= 1500*1e3 with {0, , 0, VIS, "PCASL prep  : (ms) post-labeling delay ( includes background suppression)",};
 int pcasl_duration = 1500*1e3 with {0, , 0, VIS, "PCASL prep  : (ms) Labeling Duration)",}; /* this is the bolus duration, NOT the duration of a single cycle */
@@ -952,6 +955,21 @@ STATUS cveval( void )
 	cvmax(opuser42, 500);	
 	nm0frames = opuser42;
 
+	piuset2 += use43;
+	cvdesc(opuser43, "Use presaturation pulse? (1) Yes, (0) No ");
+	cvdef(opuser43, 0);
+	opuser43= presat_flag; 
+	cvmin(opuser43, 0);
+	cvmax(opuser43, 1);
+	presat_flag = opuser43;
+
+	piuset2 += use44;
+	cvdesc(opuser44, "Do Cardiac Gating ? (1) Yes, (0) No");
+	cvdef(opuser44, 0);
+	opuser44 = do_cardiac_gating; 
+	cvmin(opuser44, 0); 
+	cvmax(opuser44, 1);
+	do_cardiac_gating = opuser44;
 
 
 @inline Prescan.e PScveval
@@ -3289,7 +3307,7 @@ STATUS scan( void )
 			fprintf(stderr, "\nscan():Encoding velocity spectrum Avgs. counter: %d \n", vspectrum_rep); 
 			if (vspectrum_rep == vspectrum_Navgs)
 			{
-				fprintf(stderr, "\n\nscan() velocity spectrum: updating for prep1 pulse for vel %f \n\n", vel_target);
+				fprintf(stderr, "\n\nscan() velocity spectrum: updating for prep2 pulse for vel %f \n\n", vel_target);
 				vspectrum_rep = 0;
 				vspectrum_grad += prep2_delta_gmax;
 			}	
@@ -3400,6 +3418,12 @@ STATUS scan( void )
 				ttotal += play_deadtime(tr_deadtime);
 
 				fprintf(stderr, "scan(): ************* beginning loop for frame %d, shot %d, arm %d *************\n", framen, shotn, armn);
+
+				/* Cardiac gating option - prior to presaturation pulse */
+				if (do_cardiac_gating) {
+                	settrigger(TRIG_ECG, 0);
+                	fprintf(stderr, "scan(): Setting ECG Trigger\n");
+				}
 
 				/* play the ASL pre-saturation pulse to reset magnetization */
 				if (presat_flag) {
