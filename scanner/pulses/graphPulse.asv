@@ -1,0 +1,86 @@
+function [rho, grad, theta] = graphPulse(dirname, b1scale, Gmax)
+% function [rho, grad, theta] = graphPulse(dirname, b1scale, Gmax)
+% make a figure of the pulse
+curDir = pwd;
+cd (dirname)
+
+theta=load('theta.txt');
+grad=load('grad.txt');
+rho=load('rho.txt');
+
+grad =  Gmax *grad/max(abs(grad(:)));
+rho =   b1scale*rho/max(abs(rho(:)));
+theta = pi* theta/max(abs(theta(:)));
+
+grad(isnan(grad))=0;
+rho(isnan(rho)) = 0;
+theta(isnan(theta)) = 0;
+
+t=[0:length(grad)-1]*4e-6;
+
+subplot(211)
+[ax a b]= plotyy(t,rho(:,1), t,theta(:,1));
+
+xlabel('Time(sec.)')
+ylabel(ax(2), '\angle B_1 (rads.)','FontSize',15)
+ylabel(ax(1), '| B_1 | (mG)', 'FontSize',15)
+title('RF exitation (B_1)')
+dlha = get(ax(1),'children');
+set(dlha(:),'LineWidth',2);
+set(gca,'LineWidth',2);
+
+dlha = get(ax(2),'children');
+set(dlha(:),'LineWidth',2);
+set(gca,'LineWidth',2);
+
+subplot(212)
+plot(t,grad(:,1))
+
+xlabel('Time(sec.)')
+ylabel('G_{vel} (G/cm)','FontSize',15)
+title('Velocity Encoding Gradient')
+
+dlha = get(gca,'children');
+set(dlha(:),'LineWidth',2);
+set(gca,'LineWidth',2);
+
+print -dpng pulse_plot
+
+% calculate moments
+dt = 4e-6;  %sec
+gam = 26752 ; % rad/s/G.
+tvec = [1:length(grad)] * dt; %sec
+
+%  This is valid for a BIR8 pulse only :
+G = grad(:,1)';
+G(1:end/2) = abs(G(1:end/2));
+G(end/2+1:end) = -abs(G(end/2+1:end));
+G(end-800:end) = 0; % remove the crusher after the fact.
+figure
+plot(G)
+title('Gradient with 180-flip reversals')
+
+fprintf('\nGradient moment calculations for BIR8 pulse  \n')
+m0 = sum(G(:,1)) * dt / Gmax; % s*G/cm
+m1 = sum(tvec .* G) * dt / Gmax; % s^2*G/cm
+
+Vcut = pi/(2*gam*m1);
+fprintf('\nm0 : %e sec*G/cm , \tm1 = %e sec^2 *G/cm \n', m0, m1)
+fprintf('\ncut off velocity, V_cut = %e cm/s\n', Vcut);
+
+% velocity spectrum bandwidth and resolution of the measurement
+Nims = 41; % assuming 41 pairs of measurements
+deltaG = 2*Gmax/Nims; % G/cm
+vres = pi/(gam*m1); % pi/ 
+vmax = vres*Nims/2;
+fprintf('\nVelocity spectrum (assumining BIR8 pulse, Gmax=4 G/cm), and %d pairs\n', Nims);
+fprintf('\tVelocity BW = %e cm/s \n', vmax);
+fprintf('\tVelocity resolution = %e cm/s \n', vres);
+
+F = cumsum(G)*dt;
+bval = gam^2 * sum(F.^2)*dt;
+fprintf('\nb-value (assumining BIR8 pulse), %e s/cm^2 \n', bval);
+
+
+
+cd(curDir)
