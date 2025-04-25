@@ -689,7 +689,144 @@ STATUS cveval( void )
 	cvmax(opuser15, 2);	
 	fatsup_mode = opuser15;
 	
-	if (fatsup_mode == 2) /* only for SPIR */
+	piuset += use16;
+	cvdesc(opuser16, "Num. M0 frames (no label or BGS)");
+	cvdef(opuser16, 0);
+	opuser16= nm0frames;
+	cvmin(opuser16, 0);
+	cvmax(opuser16, 500);	
+	nm0frames = opuser16;
+
+	piuset += use17;
+	cvdesc(opuser17, "Use presaturation pulse? (1) Yes, (0) No ");
+	cvdef(opuser17, 0);
+	opuser17= presat_flag; 
+	cvmin(opuser17, 0);
+	cvmax(opuser17, 1);
+	presat_flag = opuser17;
+
+	piuset += use18;
+	cvdesc(opuser18, "Do Cardiac Gating ? (1) Yes, (0) No");
+	cvdef(opuser18, 0);
+	opuser18 = do_cardiac_gating; 
+	cvmin(opuser18, 0); 
+	cvmax(opuser18, 1);
+	do_cardiac_gating = opuser18;
+	
+	/* GUI variables for  PCASL pulses */
+	
+	piuset += use19;
+	cvdesc(opuser19, "use PCASL? (0=off)");
+	cvdef(opuser19, 0);
+	opuser19 = pcasl_flag;
+	cvmin(opuser19, 0);
+	cvmax(opuser19, 1);	
+	pcasl_flag = opuser19;
+
+	if (pcasl_flag > 0)
+		piuset += use20;
+	cvdesc(opuser20, "Labeling plane distance to center of Rx (mm)");
+	cvdef(opuser20, 0);
+	opuser20 = pcasl_distance*10;
+	cvmin(opuser20, 0);
+	cvmax(opuser20, 500);	
+	pcasl_distance = opuser20/10.0;  /* cm */
+
+	if (pcasl_flag > 0)
+		piuset += use21;
+	cvdesc(opuser21, "PCASL PLD (ms)");
+	cvdef(opuser21, 0);
+	opuser21 = pcasl_pld/1e3;
+	cvmin(opuser21, 0);
+	cvmax(opuser21, 99999);	
+	pcasl_pld = 4*round(opuser21*1e3/4);
+	
+	if (pcasl_flag > 0)
+		piuset += use22;
+	cvdesc(opuser22, "PCASL labeling duration (ms)");
+	cvdef(opuser22, 1);
+	opuser22 = pcasl_duration/1e3;
+	cvmin(opuser22, 0);
+	cvmax(opuser22, 5000);	
+	pcasl_duration = 4*round(opuser22*1e3/4);
+
+	/* GUI variables for prep1 pulse*/
+
+	piuset += use23;
+	cvdesc(opuser23, "Prep 1 pulse id (0=off)");
+	cvdef(opuser23, 0);
+	opuser23 = prep1_id;
+	cvmin(opuser23, 0);
+	cvmax(opuser23, 99999);	
+	prep1_id = opuser23;
+		
+	if (prep1_id > 0)
+		piuset += use24;
+	cvdesc(opuser24, "Prep 1 PLD (ms)");
+	cvdef(opuser24, 0);
+	opuser24 = prep1_pld*1e-3;
+	cvmin(opuser24, 0);
+	cvmax(opuser24, 99999);	
+	prep1_pld = 4*round(opuser24*1e3/4);
+	
+	if (prep1_id > 0)
+		piuset += use25;
+	cvdesc(opuser25, "Prep 1 max B1 amp (mG)");
+	cvdef(opuser25, 0);
+	opuser25 = prep1_rfmax;
+	cvmin(opuser25, 0);
+	cvmax(opuser25, 500);	
+	prep1_rfmax = opuser25;
+	
+	if (prep1_id > 0)
+		piuset += use26;
+	cvdesc(opuser26, "Prep 1 max G amp (G/cm)");
+	cvdef(opuser26, 0);
+	opuser26 = prep1_gmax;
+	cvmin(opuser26, -GMAX);
+	cvmax(opuser26, GMAX);	
+	prep1_gmax = opuser26;
+	
+	/* GUI variables for prep pulse 2 */
+	piuset += use27;
+	cvdesc(opuser27, "Prep 2 pulse id (0=off)");
+	cvdef(opuser27, 0);
+	opuser27 = prep2_id;
+	cvmin(opuser27, 0);
+	cvmax(opuser27, 99999);	
+	prep2_id = opuser27;
+		
+	if (prep2_id > 0)
+		piuset += use28;
+	cvdesc(opuser28, "Prep 2 PLD (ms)");
+	cvdef(opuser28, 0);
+	opuser28 = prep2_pld*1e-3;
+	cvmin(opuser28, 0);
+	cvmax(opuser28, 99999);	
+	prep2_pld = 4*round(opuser28*1e3/4);
+	
+	if (prep2_id > 0)
+		piuset += use29;
+	cvdesc(opuser29, "Prep 2 max B1 amp (mG)");
+	cvdef(opuser29, 0);
+	opuser29 = prep2_rfmax;
+	cvmin(opuser29, 0);
+	cvmax(opuser29, 500);	
+	prep2_rfmax = opuser29;
+	
+	if (prep2_id > 0)
+		piuset += use30;
+	cvdesc(opuser30, "Prep 2 max G amp (G/cm)");
+	cvdef(opuser30, 0);
+	opuser30 = prep2_gmax;
+	cvmin(opuser30, 0);
+	cvmax(opuser30, GMAX);	
+	prep2_gmax = opuser30;
+	
+	/* Let's not use these ... GE reserved opuser CVs start at opuser36 */
+
+	/*
+	if (fatsup_mode == 2) // only for SPIR
 		piuset += use16;
 	cvdesc(opuser16, "SPIR flip angle (deg)");
 	cvdef(opuser16, 0);
@@ -698,7 +835,7 @@ STATUS cveval( void )
 	cvmax(opuser16, 360);	
 	spir_fa = opuser16;
 	
-	if (fatsup_mode == 2) /* only for SPIR */
+	if (fatsup_mode == 2) // only for SPIR 
 		piuset += use17;
 	cvdesc(opuser17, "SPIR inversion time (ms)");
 	cvdef(opuser17, 0);
@@ -707,143 +844,6 @@ STATUS cveval( void )
 	cvmax(opuser17, 5000);	
 	spir_ti = 4*round(opuser17*1e3/4);
 
-	piuset += use18;
-	cvdesc(opuser18, "Num. M0 frames (no label or BGS)");
-	cvdef(opuser18, 0);
-	opuser18= nm0frames;
-	cvmin(opuser18, 0);
-	cvmax(opuser18, 500);	
-	nm0frames = opuser18;
-
-	piuset += use19;
-	cvdesc(opuser19, "Use presaturation pulse? (1) Yes, (0) No ");
-	cvdef(opuser19, 0);
-	opuser19= presat_flag; 
-	cvmin(opuser19, 0);
-	cvmax(opuser19, 1);
-	presat_flag = opuser19;
-
-	piuset += use20;
-	cvdesc(opuser20, "Do Cardiac Gating ? (1) Yes, (0) No");
-	cvdef(opuser20, 0);
-	opuser20 = do_cardiac_gating; 
-	cvmin(opuser20, 0); 
-	cvmax(opuser20, 1);
-	do_cardiac_gating = opuser20;
-	
-	/* GUI variables for  PCASL pulses */
-	
-	piuset += use21;
-	cvdesc(opuser21, "use PCASL? (0=off)");
-	cvdef(opuser21, 0);
-	opuser21 = pcasl_flag;
-	cvmin(opuser21, 0);
-	cvmax(opuser21, 1);	
-	pcasl_flag = opuser21;
-
-	if (pcasl_flag > 0)
-		piuset += use22;
-	cvdesc(opuser22, "Labeling plane distance to center of Rx (mm)");
-	cvdef(opuser22, 0);
-	opuser22 = pcasl_distance*10;
-	cvmin(opuser22, 0);
-	cvmax(opuser22, 500);	
-	pcasl_distance = opuser22/10.0;  /* cm */
-
-	if (pcasl_flag > 0)
-		piuset += use23;
-	cvdesc(opuser23, "PCASL PLD (ms)");
-	cvdef(opuser23, 0);
-	opuser23 = pcasl_pld/1e3;
-	cvmin(opuser23, 0);
-	cvmax(opuser23, 99999);	
-	pcasl_pld = 4*round(opuser23*1e3/4);
-	
-	if (pcasl_flag > 0)
-		piuset += use24;
-	cvdesc(opuser24, "PCASL labeling duration (ms)");
-	cvdef(opuser24, 1);
-	opuser24 = pcasl_duration/1e3;
-	cvmin(opuser24, 0);
-	cvmax(opuser24, 5000);	
-	pcasl_duration = 4*round(opuser24*1e3/4);
-
-	/* GUI variables for prep1 pulse*/
-
-	piuset += use18;
-	cvdesc(opuser18, "Prep 1 pulse id (0=off)");
-	cvdef(opuser18, 0);
-	opuser18 = prep1_id;
-	cvmin(opuser18, 0);
-	cvmax(opuser18, 99999);	
-	prep1_id = opuser18;
-		
-	if (prep1_id > 0)
-		piuset += use19;
-	cvdesc(opuser19, "Prep 1 PLD (ms)");
-	cvdef(opuser19, 0);
-	opuser19 = prep1_pld*1e-3;
-	cvmin(opuser19, 0);
-	cvmax(opuser19, 99999);	
-	prep1_pld = 4*round(opuser19*1e3/4);
-	
-	if (prep1_id > 0)
-		piuset += use20;
-	cvdesc(opuser20, "Prep 1 max B1 amp (mG)");
-	cvdef(opuser20, 0);
-	opuser20 = prep1_rfmax;
-	cvmin(opuser20, 0);
-	cvmax(opuser20, 500);	
-	prep1_rfmax = opuser20;
-	
-	if (prep1_id > 0)
-		piuset += use21;
-	cvdesc(opuser21, "Prep 1 max G amp (G/cm)");
-	cvdef(opuser21, 0);
-	opuser21 = prep1_gmax;
-	cvmin(opuser21, -GMAX);
-	cvmax(opuser21, GMAX);	
-	prep1_gmax = opuser21;
-	
-	/* GUI variables for prep pulse 2 */
-	piuset += use26;
-	cvdesc(opuser26, "Prep 2 pulse id (0=off)");
-	cvdef(opuser26, 0);
-	opuser26 = prep2_id;
-	cvmin(opuser26, 0);
-	cvmax(opuser26, 99999);	
-	prep2_id = opuser26;
-		
-	if (prep2_id > 0)
-		piuset += use27;
-	cvdesc(opuser27, "Prep 2 PLD (ms)");
-	cvdef(opuser27, 0);
-	opuser27 = prep2_pld*1e-3;
-	cvmin(opuser27, 0);
-	cvmax(opuser27, 99999);	
-	prep2_pld = 4*round(opuser27*1e3/4);
-	
-	if (prep2_id > 0)
-		piuset += use28;
-	cvdesc(opuser28, "Prep 2 max B1 amp (mG)");
-	cvdef(opuser28, 0);
-	opuser28 = prep2_rfmax;
-	cvmin(opuser28, 0);
-	cvmax(opuser28, 500);	
-	prep2_rfmax = opuser28;
-	
-	if (prep2_id > 0)
-		piuset += use29;
-	cvdesc(opuser29, "Prep 2 max G amp (G/cm)");
-	cvdef(opuser29, 0);
-	opuser29 = prep2_gmax;
-	cvmin(opuser29, 0);
-	cvmax(opuser29, GMAX);	
-	prep2_gmax = opuser29;
-	
-	/* Let's not use these ... GE reserved opuser CVs start at opuser36 */
-
-	/*
 	if (prep2_id > 0)
 		piuset += use30;
 	cvdesc(opuser30, "Prep 2 mod pattern: (1) LC, (2) CL, (3) L, (4), C");
