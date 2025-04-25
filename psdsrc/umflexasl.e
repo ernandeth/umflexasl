@@ -595,14 +595,6 @@ STATUS cveval( void )
 	cvmax(opuser1, 1000);	
 	esp = 4*round(opuser1*1e3/4);
 	
-	if (ro_type == 2) /* SPGR only */
-		piuset += use2;
-	cvdesc(opuser2, "RF spoiling: (0) off, (1) on");
-	cvdef(opuser2, 0);
-	opuser2 = rfspoil_flag;
-	cvmin(opuser2, 0);
-	cvmax(opuser2, 1);	
-	rfspoil_flag = opuser2;
 
 	piuset += use3;
 	cvdesc(opuser3, "Number of frames");
@@ -635,22 +627,6 @@ STATUS cveval( void )
 	cvmin(opuser6, 0);
 	cvmax(opuser6, 100);
 	ndisdaqechoes = opuser6;
-	
-	piuset += use7;
-	cvdesc(opuser7, "Crusher area factor (% kmax)");
-	cvdef(opuser7, crushfac);
-	opuser7 = crushfac;
-	cvmin(opuser7, 0);
-	cvmax(opuser7, 10);
-	crushfac = opuser7;
-	
-	piuset += use8;
-	cvdesc(opuser8, "Flow comp: (0) off, (1) on");
-	cvdef(opuser8, 0);
-	opuser8 = flowcomp_flag;
-	cvmin(opuser8, 0);
-	cvmax(opuser8, 1);	
-	flowcomp_flag = opuser8;
 	
 	piuset += use9;
 	cvdesc(opuser9, "FID mode (no spiral): (0) off, (1) on");
@@ -732,6 +708,69 @@ STATUS cveval( void )
 	spir_ti = 4*round(opuser17*1e3/4);
 
 	piuset += use18;
+	cvdesc(opuser18, "Num. M0 frames (no label or BGS)");
+	cvdef(opuser18, 0);
+	opuser18= nm0frames;
+	cvmin(opuser18, 0);
+	cvmax(opuser18, 500);	
+	nm0frames = opuser18;
+
+	piuset += use19;
+	cvdesc(opuser19, "Use presaturation pulse? (1) Yes, (0) No ");
+	cvdef(opuser19, 0);
+	opuser19= presat_flag; 
+	cvmin(opuser19, 0);
+	cvmax(opuser19, 1);
+	presat_flag = opuser19;
+
+	piuset += use20;
+	cvdesc(opuser20, "Do Cardiac Gating ? (1) Yes, (0) No");
+	cvdef(opuser20, 0);
+	opuser20 = do_cardiac_gating; 
+	cvmin(opuser20, 0); 
+	cvmax(opuser20, 1);
+	do_cardiac_gating = opuser20;
+	
+	/* GUI variables for  PCASL pulses */
+	
+	piuset += use21;
+	cvdesc(opuser21, "use PCASL? (0=off)");
+	cvdef(opuser21, 0);
+	opuser21 = pcasl_flag;
+	cvmin(opuser21, 0);
+	cvmax(opuser21, 1);	
+	pcasl_flag = opuser21;
+
+	if (pcasl_flag > 0)
+		piuset += use22;
+	cvdesc(opuser22, "Labeling plane distance to center of Rx (mm)");
+	cvdef(opuser22, 0);
+	opuser22 = pcasl_distance*10;
+	cvmin(opuser22, 0);
+	cvmax(opuser22, 500);	
+	pcasl_distance = opuser22/10.0;  /* cm */
+
+	if (pcasl_flag > 0)
+		piuset += use23;
+	cvdesc(opuser23, "PCASL PLD (ms)");
+	cvdef(opuser23, 0);
+	opuser23 = pcasl_pld/1e3;
+	cvmin(opuser23, 0);
+	cvmax(opuser23, 99999);	
+	pcasl_pld = 4*round(opuser23*1e3/4);
+	
+	if (pcasl_flag > 0)
+		piuset += use24;
+	cvdesc(opuser24, "PCASL labeling duration (ms)");
+	cvdef(opuser24, 1);
+	opuser24 = pcasl_duration/1e3;
+	cvmin(opuser24, 0);
+	cvmax(opuser24, 5000);	
+	pcasl_duration = 4*round(opuser24*1e3/4);
+
+	/* GUI variables for prep1 pulse*/
+
+	piuset += use18;
 	cvdesc(opuser18, "Prep 1 pulse id (0=off)");
 	cvdef(opuser18, 0);
 	opuser18 = prep1_id;
@@ -766,42 +805,7 @@ STATUS cveval( void )
 	cvmax(opuser21, GMAX);	
 	prep1_gmax = opuser21;
 	
-	if (prep1_id > 0)
-		piuset += use22;
-	cvdesc(opuser22, "Prep 1 mod pattern: (1) LC, (2) CL, (3) L, (4), C");
-	cvdef(opuser22, 1);
-	opuser22 = prep1_mod;
-	cvmin(opuser22, 1);
-	cvmax(opuser22, 4);	
-	prep1_mod = opuser22;
-	
-	if (prep1_id > 0)
-		piuset += use23;
-	cvdesc(opuser23, "Prep 1 BGS 1 delay (0=off) (ms)");
-	cvdef(opuser23, 0);
-	opuser23 = prep1_tbgs1*1e-3;
-	cvmin(opuser23, 0);
-	cvmax(opuser23, 20000);	
-	prep1_tbgs1 = 4*round(opuser23*1e3/4);
-	
-	if (prep1_id > 0)
-		piuset += use24;
-	cvdesc(opuser24, "Prep 1 BGS 2 delay (0=off) (ms)");
-	cvdef(opuser24, 0);
-	opuser24 = prep1_tbgs2*1e-3;
-	cvmin(opuser24, 0);
-	cvmax(opuser24, 20000);	
-	prep1_tbgs2 = 4*round(opuser24*1e3/4);
-	
-	if (prep1_id > 0)
-		piuset += use25;
-	cvdesc(opuser25, "Prep 1 BGS 3 delay (0=off) (ms)");
-	cvdef(opuser25, 0);
-	opuser25 = prep1_tbgs3*1e-3;
-	cvmin(opuser25, 0);
-	cvmax(opuser25, 20000);	
-	prep1_tbgs3= 4*round(opuser25*1e3/4);
-	
+	/* GUI variables for prep pulse 2 */
 	piuset += use26;
 	cvdesc(opuser26, "Prep 2 pulse id (0=off)");
 	cvdef(opuser26, 0);
@@ -837,6 +841,9 @@ STATUS cveval( void )
 	cvmax(opuser29, GMAX);	
 	prep2_gmax = opuser29;
 	
+	/* Let's not use these ... GE reserved opuser CVs start at opuser36 */
+
+	/*
 	if (prep2_id > 0)
 		piuset += use30;
 	cvdesc(opuser30, "Prep 2 mod pattern: (1) LC, (2) CL, (3) L, (4), C");
@@ -873,33 +880,7 @@ STATUS cveval( void )
 	cvmax(opuser33, 20000);	
 	prep2_tbgs3= 4*round(opuser33*1e3/4);
 
-	/* GUI variables for  PCASL pulse */
-	
-	piuset2 += use34;
-	cvdesc(opuser34, "use PCASL? (0=off)");
-	cvdef(opuser34, 0);
-	opuser34 = pcasl_flag;
-	cvmin(opuser34, 0);
-	cvmax(opuser26, 9);	
-	pcasl_flag = opuser34;
 		
-	if (pcasl_flag > 0)
-		piuset2 += use35;
-	cvdesc(opuser35, "PCASL PLD (ms)");
-	cvdef(opuser35, 0);
-	opuser35 = pcasl_pld/1e3;
-	cvmin(opuser35, 0);
-	cvmax(opuser35, 99999);	
-	pcasl_pld = 4*round(opuser35*1e3/4);
-	
-	if (pcasl_flag > 0)
-		piuset2 += use36;
-	cvdesc(opuser36, "PCASL labeling duration (ms)");
-	cvdef(opuser36, 1);
-	opuser36 = pcasl_duration/1e3;
-	cvmin(opuser36, 0);
-	cvmax(opuser36, 5000);	
-	pcasl_duration = 4*round(opuser36*1e3/4);
 	
 	if (pcasl_flag > 0)
 		piuset2 += use37;
@@ -937,39 +918,34 @@ STATUS cveval( void )
 	cvmax(opuser40, 100);	
 	pcasl_calib_frames = opuser40;
 	
+
+	if (ro_type == 2) // SPGR only 
+		piuset += use2;
+	cvdesc(opuser2, "RF spoiling: (0) off, (1) on");
+	cvdef(opuser2, 0);
+	opuser2 = rfspoil_flag;
+	cvmin(opuser2, 0);
+	cvmax(opuser2, 1);	
+	rfspoil_flag = opuser2;
+
+	piuset += use7;
+	cvdesc(opuser7, "Crusher area factor (% kmax)");
+	cvdef(opuser7, crushfac);
+	opuser7 = crushfac;
+	cvmin(opuser7, 0);
+	cvmax(opuser7, 10);
+	crushfac = opuser7;
 	
-	if (pcasl_flag > 0)
-		piuset2 += use41;
-	cvdesc(opuser41, "Labeling plane distance to center of Rx (mm)");
-	cvdef(opuser41, 0);
-	opuser41 = pcasl_distance*10;
-	cvmin(opuser41, 0);
-	cvmax(opuser41, 500);	
-	pcasl_distance = opuser41/10.0;  /* cm */
+	piuset += use8;
+	cvdesc(opuser8, "Flow comp: (0) off, (1) on");
+	cvdef(opuser8, 0);
+	opuser8 = flowcomp_flag;
+	cvmin(opuser8, 0);
+	cvmax(opuser8, 1);	
+	flowcomp_flag = opuser8;
+	----------------*/
 
-	piuset2 += use42;
-	cvdesc(opuser42, "Num. M0 frames (no label or BGS)");
-	cvdef(opuser42, 0);
-	opuser42= nm0frames;
-	cvmin(opuser42, 0);
-	cvmax(opuser42, 500);	
-	nm0frames = opuser42;
 
-	piuset2 += use43;
-	cvdesc(opuser43, "Use presaturation pulse? (1) Yes, (0) No ");
-	cvdef(opuser43, 0);
-	opuser43= presat_flag; 
-	cvmin(opuser43, 0);
-	cvmax(opuser43, 1);
-	presat_flag = opuser43;
-
-	piuset2 += use44;
-	cvdesc(opuser44, "Do Cardiac Gating ? (1) Yes, (0) No");
-	cvdef(opuser44, 0);
-	opuser44 = do_cardiac_gating; 
-	cvmin(opuser44, 0); 
-	cvmax(opuser44, 1);
-	do_cardiac_gating = opuser44;
 
 
 @inline Prescan.e PScveval
