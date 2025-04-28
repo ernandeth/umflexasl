@@ -546,7 +546,7 @@ STATUS cvinit( void )
 	gettarget(&RHO_max, RHO, &loggrd);
 	gettarget(&THETA_max, THETA, &loggrd);
 	getramptime(&ZGRAD_risetime, &ZGRAD_falltime, ZGRAD, &loggrd);	
-	ZGRAD_risetime *= 2; /* extra fluffy */
+	ZGRAD_risetime *= 1.2; /* slowing the gradient down a little to avoid PNS */
 	fprintf(stderr, "ZGRAD_risetime = %d\n", ZGRAD_risetime);	
 
 @inline Prescan.e PScvinit
