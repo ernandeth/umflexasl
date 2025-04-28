@@ -179,10 +179,12 @@ int ndisdaqtrains = 2 with {0, , 2, VIS, "number of disdaq echo trains at beginn
 int ndisdaqechoes = 0 with {0, , 0, VIS, "number of disdaq echos at beginning of echo train",};
 
 int varflip = 1 with {0,1,1, VIS, "do variable flip angles (FSE case)", };
-float arf180; 
+float arf180, arf180ns; 
 
 int ro_type = 2 with {1, 3, 2, VIS, "FSE (1), SPGR (2), or bSSFP (3)",};
 float SE_factor = 1.5 with {0.01, 10.0 , 1.5, VIS, "Adjustment for the slice width of the refocuser",};
+int	doNonSelRefocus = 0 with {0, 1, 0, VIS, "Use a RECT non-selective refocuser pulse",};
+
 int fatsup_mode = 1 with {0, 3, 1, VIS, "none (0), CHESS (1), or SPIR (2)",};
 int fatsup_off = -520 with { , , -520, VIS, "fat suppression pulse frequency offset (Hz)",};
 int fatsup_bw = 440 with { , , 440, VIS, "fat suppression bandwidth (Hz)",};
@@ -192,7 +194,7 @@ int rfspoil_flag = 1 with {0, 1, 1, VIS, "option to do RF phase cycling (117deg 
 int flowcomp_flag = 0 with {0, 1, 0, VIS, "option to use flow-compensated slice select gradients",};
 int rf1_b1calib = 0 with {0, 1, 0, VIS, "option to sweep B1 amplitudes across frames from 0 to nominal B1 for rf1 pulse",};
 
-int pgbuffertime = 248 with {100, , 248, VIS, "gradient IPG buffer time (us)",};
+int pgbuffertime = 248 with {0, , 248, VIS, "gradient IPG buffer time (us)",};
 int pcasl_buffertime = 0 with {0, , 248, VIS, "PCASL core - gradient IPG buffer time (us)",}; /* used to be 100 */
 float crushfac = 2.0 with {0, 10, 0, VIS, "crusher amplitude factor (a.k.a. cycles of phase/vox; dk_crush = crushfac*kmax)",};
 int kill_grads = 0 with {0, 1, 0, VIS, "option to turn off readout gradients",};
@@ -299,6 +301,7 @@ int dur_bkgsupcore = 0 with {0, , 0, INVIS, "duration of the background suppress
 int dur_fatsupcore = 0 with {0, , 0, INVIS, "duration of the fat suppression core (us)",};
 int dur_rf0core = 0 with {0, , 0, INVIS, "duration of the slice selective rf0 core (us)",};
 int dur_rf1core = 0 with {0, , 0, INVIS, "duration of the slice selective rf1 core (us)",};
+int dur_rf1nscore = 0 with {0, , 0, INVIS, "duration of the NON-slice selective rf1 core (us)",};
 int dur_seqcore = 0 with {0, , 0, INVIS, "duration of the spiral readout core (us)",};
 int deadtime_pcaslcore = 0 with {0, , 0, INVIS, "deadtime at end of pcasl core (us)",};
 int deadtime_fatsupcore = 0 with {0, , 0, INVIS, "deadtime at end of fatsup core (us)",};
@@ -994,8 +997,8 @@ STATUS predownload( void )
 	int slice;
 	float kzmax;
 	int minesp, minte, absmintr;	
-	float rf0_b1, rf1_b1;
-	float rf180_b1;
+	float rf0_b1, rf1_b1, rf1ns_b1;
+	float rf180_b1, rf180ns_b1;
 	float rfps1_b1, rfps2_b1, rfps3_b1, rfps4_b1;
 	float rffs_b1, rfbs_b1;
 	float prep1_b1, prep2_b1;
@@ -1084,10 +1087,20 @@ STATUS predownload( void )
 		if (rf180_b1 > maxB1[L_SCAN]) maxB1[L_SCAN] = rf180_b1;
 	}
 
+	rf180ns_b1 = calc_hard_B1(pw_rf1ns, 180);
+	if (ro_type==1){
+		fprintf(stderr, "predownload(): maximum B1 for a 180 deg RECT pulse: %f\n", rf180ns_b1);
+		if (rf180ns_b1 > maxB1[L_SCAN]) maxB1[L_SCAN] = rf180ns_b1;
+	}
+
 	rf1_b1 = calc_sinc_B1(cyc_rf1, pw_rf1, opflip);
 	fprintf(stderr, "predownload(): maximum B1 for rf1 pulse: %f\n", rf1_b1);
 	if (rf1_b1 > maxB1[L_SCAN]) maxB1[L_SCAN] = rf1_b1;
-	
+
+	rf1ns_b1 = calc_hard_B1(pw_rf1ns, opflip);
+	fprintf(stderr, "predownload(): maximum B1 for rf1ns pulse: %f\n", rf1ns_b1);
+	if (rf1ns_b1 > maxB1[L_SCAN]) maxB1[L_SCAN] = rf1ns_b1;
+
 	rfps1_b1 = calc_hard_B1(pw_rfps1, 72.0); /* flip angle of 72 degrees */
 	fprintf(stderr, "predownload(): maximum B1 for presat pulse 1: %f Gauss \n", rfps1_b1);
 	if (rfps1_b1 > maxB1[L_SCAN]) maxB1[L_SCAN] = rfps1_b1;
@@ -1158,9 +1171,14 @@ STATUS predownload( void )
 
 	/* (this one is for the variable flip angle calculation) */
 	arf180 = rf180_b1 / maxB1Seq;	
+	arf180ns = rf180ns_b1 / maxB1Seq;	
 
 	a_rf1 = rf1_b1 / maxB1Seq;
 	ia_rf1 = a_rf1 * MAX_PG_WAMP;
+
+	a_rf1ns = rf1ns_b1 / maxB1Seq;
+	ia_rf1ns = a_rf1ns * MAX_PG_WAMP;
+
 
 	a_rfps1 = rfps1_b1 / maxB1Seq;
 	ia_rfps1 = a_rfps1 * MAX_PG_WAMP;
@@ -1384,6 +1402,18 @@ STATUS predownload( void )
 	pw_gzrf1trap2d = tmp_pwd;
 	a_gzrf1trap2 = tmp_a;
 	
+	/* Now for the rect non sel refocuser*/
+	pw_rf1trap1ns = tmp_pw;
+	pw_rf1trap1nsa = tmp_pwa;
+	pw_rf1trap1nsd = tmp_pwd;
+	a_rf1trap1ns = tmp_a;
+
+	/* set trap2 as a crusher (for FSE case) */
+	pw_rf1trap2ns = tmp_pw;
+	pw_rf1trap2nsa = tmp_pwa;
+	pw_rf1trap2nsd = tmp_pwd;
+	a_rf1trap2ns = tmp_a;
+	
 	/* calculate slice select refocuser gradient */
 	tmp_area = a_gzrf1 * (pw_gzrf1 + (pw_gzrf1a + pw_gzrf1d)/2.0);
 	amppwgrad(tmp_area, GMAX, 0, 0, ZGRAD_risetime, 0, &tmp_a, &tmp_pwa, &tmp_pw, &tmp_pwd); 	
@@ -1394,7 +1424,7 @@ STATUS predownload( void )
 	pw_gzrf0rd = tmp_pwd;
 	a_gzrf0r = tmp_a;
 	
-	if (ro_type > 1) { /* GRE modes - make trap2 a slice selct refocuser */
+	if (ro_type > 1) { /* GRE modes - make trap2 a slice select refocuser */
 		pw_gzrf1trap2 = tmp_pw;
 		pw_gzrf1trap2a = tmp_pwa;
 		pw_gzrf1trap2d = tmp_pwd;
@@ -1541,7 +1571,10 @@ STATUS predownload( void )
 			minte += pgbuffertime;	
 			minte += pw_gzrf1trap1a + pw_gzrf1trap1 + pw_gzrf1trap1d; /* pre-rf crusher */
 			minte += pgbuffertime;
-			minte += pw_gzrf1a + pw_gzrf1 + pw_gzrf1d; /* rf1 pulse */
+			if (doNonSelRefocus)
+				minte += pw_rf1ns; /* rf1 NS pulse */
+			else
+				minte += pw_gzrf1a + pw_gzrf1 + pw_gzrf1d; /* rf1 pulse */
 			minte += pgbuffertime;	
 			minte += pw_gzrf1trap2a + pw_gzrf1trap2 + pw_gzrf1trap2d; /* post-rf crusher */
 			minte += pgbuffertime;
@@ -1759,6 +1792,16 @@ STATUS predownload( void )
 	dur_rf1core += pw_gzrf1trap2a + pw_gzrf1trap2 + pw_gzrf1trap2d;
 	dur_rf1core += pgbuffertime; 
 
+	/* calculate duration of nonselective rect refocuser rf1nscore */
+	dur_rf1nscore = 0;
+	dur_rf1nscore += pgbuffertime;
+	dur_rf1nscore += pw_rf1trap1nsa + pw_rf1trap1ns + pw_rf1trap1nsd;
+	dur_rf1nscore += pgbuffertime;
+	dur_rf1nscore += pw_rf1ns;
+	dur_rf1nscore += pgbuffertime;
+	dur_rf1nscore += pw_rf1trap2nsa + pw_rf1trap2ns + pw_rf1trap2nsd;
+	dur_rf1nscore += pgbuffertime; 
+
 	/* calculate duration of seqcore */
 	dur_seqcore = 0;
 	dur_seqcore += deadtime1_seqcore + pgbuffertime;
@@ -1776,8 +1819,15 @@ STATUS predownload( void )
 	absmintr += (prep2_id > 0)*(dur_prep2core + TIMESSI + prep2_pld + TIMESSI);
 	absmintr += (fatsup_mode > 0)*(dur_fatsupcore + TIMESSI);
 	if (ro_type == 1) /* FSE - add the rf0 pulse */
+	{
 		absmintr += dur_rf0core + TIMESSI;
-	absmintr += (opetl + ndisdaqechoes) * (dur_rf1core + TIMESSI + dur_seqcore + TIMESSI);
+
+		if(doNonSelRefocus)
+			absmintr += (opetl + ndisdaqechoes) * (dur_rf1nscore + TIMESSI + dur_seqcore + TIMESSI);
+		else
+			absmintr += (opetl + ndisdaqechoes) * (dur_rf1core + TIMESSI + dur_seqcore + TIMESSI);
+	}
+
 	if (exist(opautotr) == PSD_MINIMUMTR)
 		optr = absmintr;	
 	cvmin(optr, absmintr);
@@ -1786,11 +1836,17 @@ STATUS predownload( void )
 	tr_deadtime = optr - absmintr;
 
 	/* troubleshooting */
-	fprintf(stderr, "\npredownload(): DEBUG: total deadtime for disdaqs: %d ",
+	if(doNonSelRefocus)
+		fprintf(stderr, "\npredownload(): DEBUG: total deadtime for disdaqs: %d ",
 		(optr - opetl * (dur_rf1core + TIMESSI + dur_seqcore + TIMESSI)));
+	else
+		fprintf(stderr, "\npredownload(): DEBUG: total deadtime for disdaqs: %d ",
+		(optr - opetl * (dur_rf1nscore + TIMESSI + dur_seqcore + TIMESSI)));
+	
 	fprintf(stderr, "\n--optr %d " , optr);
 	fprintf(stderr, "\n--opetl %d " , opetl);
 	fprintf(stderr, "\n--dur_rf1core %d " , dur_rf1core);
+	fprintf(stderr, "\n--dur_rf1nscore %d " , dur_rf1core);
 	fprintf(stderr, "\n--dur_seqcore %d " , dur_seqcore);
 	fprintf(stderr, "\n--TIMESSI %d " , TIMESSI);
 		
@@ -2339,6 +2395,44 @@ STATUS pulsegen( void )
 	SEQLENGTH(rf1core, dur_rf1core, rf1core);
 	fprintf(stderr, "\tDone.\n");
 
+	
+	/*************************/
+	/* generate rf1ns core (non-selective rect RF pulse refocuser)*/
+	/*************************/
+	fprintf(stderr, "pulsegen(): beginning pulse generation of rf1ns core\n");
+	tmploc = 0;
+
+	if (ro_type != 3) { /* bSSFP - do not use trap1 */
+		fprintf(stderr, "pulsegen(): generating rf1trap1ns (pre-rf1 gradient trapezoid)...\n");
+		tmploc += pgbuffertime; /* start time for rf1trap1ns */
+		TRAPEZOID(ZGRAD, rf1trap1ns, tmploc + pw_rf1trap1nsa, 3200, 0, loggrd);
+		fprintf(stderr, "\tstart: %dus, ", tmploc);
+		tmploc += pw_rf1trap1nsa + pw_rf1trap1ns + pw_rf1trap1nsd; /* end time for rf1trap1ns */
+		fprintf(stderr, " end: %dus\n", tmploc);
+	}
+
+	fprintf(stderr, "pulsegen(): generating RECT rf1 (rf1ns pulse)...\n");
+	tmploc += pgbuffertime; /* start time for rf1ns */
+	CONST(RHO, rf1ns, tmploc, 1000, opflip, loggrd);
+	fprintf(stderr, "\tstart: %dus, ", tmploc);
+	tmploc += pw_rf1ns ; /* end time for rf1ns pulse */
+	fprintf(stderr, " end: %dus\n", tmploc);
+
+	if (ro_type != 3) { /* bSSFP - do not use trap2 */
+		fprintf(stderr, "pulsegen(): generating gzrf1trap2 (post-rf1 gradient trapezoid)...\n");
+		tmploc += pgbuffertime; /* start time for rf1trap2ns */
+		TRAPEZOID(ZGRAD, rf1trap2ns, tmploc + pw_rf1trap2nsa, 3200, 0, loggrd);
+		fprintf(stderr, "\tstart: %dus, ", tmploc);
+		tmploc += pw_rf1trap2nsa + pw_rf1trap2ns + pw_rf1trap2nsd; /* end time for gzrf1trap2 pulse */
+		fprintf(stderr, " end: %dus\n", tmploc);
+	}
+	
+	tmploc += pgbuffertime;
+
+	fprintf(stderr, "pulsegen(): finalizing rf1ns core...\n");
+	fprintf(stderr, "\ttotal time: %dus (tmploc = %dus)\n", dur_rf1nscore, tmploc);
+	SEQLENGTH(rf1nscore, dur_rf1nscore, rf1nscore);
+	fprintf(stderr, "\tDone.\n");
 
 	/**********************************/
 	/* generate deadtime (empty) core */
@@ -2853,6 +2947,24 @@ int play_rf1(float phs) {
 	return ttotal;	
 }
 
+/* function for playing FSE rf1 refocuser pulse
+this refocuser is a non-selective rect function */
+int play_rf1ns(float phs) {
+	int ttotal = 0;
+
+	/* set rx and tx phase */
+	setphase(phs, &rf1ns, 0);
+
+	/* Play the rf1 */
+	fprintf(stderr, "\tplay_rf1ns(): playing rf1nscore (%d us)...\n", dur_rf1nscore);
+	boffset(off_rf1nscore);
+	startseq(0, MAY_PAUSE);
+	settrigger(TRIG_INTERN, 0);
+	ttotal += dur_rf1nscore + TIMESSI;
+
+	return ttotal;	
+}
+
 /* function for playing the acquisition window */
 int play_readout() {
 	int ttotal = 0;
@@ -3045,7 +3157,10 @@ STATUS prescanCore() {
 					eg2: 
 						90x - 180y - 180y - 180y -180y ...  */
 
-					arf1_var = (arf180 + a_rf1)/2;
+					if(doNonSelRefocus)
+						arf1_var = (arf180ns + a_rf1ns)/2;
+					else
+						arf1_var = (arf180 + a_rf1)/2;
 				}
 				if(varflip) {
 					/* variable flip angle refocuser pulses to get more signal 
@@ -3057,25 +3172,45 @@ STATUS prescanCore() {
 						    
 					/* New approach: do a quadrative schedule with 
 					the minimum of parabola occurring at one quarter of the way in the echo train  */
-		    			arf1_var = ((float)(echon) - (float)(opetl)/4.0) * ((float)(echon) - (float)(opetl)/4.0);  /* shifted parabola */
+	    			arf1_var = ((float)(echon) - (float)(opetl)/4.0) * ((float)(echon) - (float)(opetl)/4.0);  /* shifted parabola */
 					tmpmax = ((float)(opetl-1) - (float)(opetl)/4.0) *  ((float)(opetl-1) - (float)(opetl)/4.0) ;    /* max value of the parabola */
-					arf1_var *= (arf180 - a_rf1) / tmpmax; /* scale */
-					arf1_var += a_rf1;  /* shift up */
 
-					/* but we cap it at 90 degree pulse */
-    					if (arf1_var > arf180/2.0) arf1_var = arf180/2.0;;
+					if(doNonSelRefocus)
+					{
+						arf1_var *= (arf180ns - a_rf1ns) / tmpmax; /* scale */
+						arf1_var += a_rf1ns;  /* shift up */
 
+						/* but we cap it at 90 degree pulse */
+							if (arf1_var > arf180ns/2.0) arf1_var = arf180ns/2.0;;
+					}
+					else
+					{
+						arf1_var *= (arf180 - a_rf1) / tmpmax; /* scale */
+						arf1_var += a_rf1;  /* shift up */
+
+						/* but we cap it at 90 degree pulse */
+							if (arf1_var > arf180/2.0) arf1_var = arf180/2.0;;
+					}
+					
+					/* set the transmitter gain after the adjustments */
+					if(doNonSelRefocus)
+					{
+						setiamp(arf1_var * MAX_PG_WAMP, &rf1ns,0);
+						fprintf(stderr,"\nadjusting var flip ang: %f (arf180=%f)", arf1_var, arf180 ); 
+					}
+					else
+					{
+						setiamp(arf1_var * MAX_PG_WAMP, &rf1,0);
+						fprintf(stderr,"\nadjusting var flip ang: %f (arf180=%f)", arf1_var, arf180 ); 
+					}
 				}
-
-			
-				/* set the transmitter gain after the adjustments */
-				setiamp(arf1_var * MAX_PG_WAMP, &rf1,0);
-				fprintf(stderr,"\nadjusting var flip ang: %f (arf180=%f)", arf1_var, arf180 ); 
-			
 			}
 		
 			fprintf(stderr, "prescanCore(): Playing flip pulse for prescan iteration %d...\n", view);
-			ttotal += play_rf1(90*(ro_type == 1));
+			if (doNonSelRefocus)
+				ttotal += play_rf1ns(90*(ro_type == 1));
+			else
+				ttotal += play_rf1(90*(ro_type == 1));
 
 			/* set rotation matrix for each echo readout */
 			setrotate( tmtxtbl[echon], 0 );
@@ -3204,7 +3339,10 @@ STATUS scan( void )
 		
 		/* Calculate and play deadtime */
 		fprintf(stderr, "scan(): playing TR deadtime for disdaq train %d (t = %d / %.0f us)...\n", disdaqn, ttotal, pitscan);
-		ttotal += play_deadtime(optr - opetl * (dur_rf1core + TIMESSI + dur_seqcore + TIMESSI));
+		if (doNonSelRefocus)
+			ttotal += play_deadtime(optr - opetl * (dur_rf1nscore + TIMESSI + dur_seqcore + TIMESSI));
+		else
+			ttotal += play_deadtime(optr - opetl * (dur_rf1core + TIMESSI + dur_seqcore + TIMESSI));
 		
 		if (ro_type == 1) { /* FSE - play 90 deg. with 0 phase*/
 			fprintf(stderr, "scan(): playing 90deg FSE tipdown for disdaq train %d (t = %d / %.0f us)...\n", disdaqn, ttotal, pitscan);
@@ -3481,7 +3619,7 @@ STATUS scan( void )
 									
 							/* New approach: do a quadrative schedule with 
 							the minimum of parabola occurring at one quarter of the way in the echo train  */
-		    					arf1_var = ((float)(echon) - (float)(opetl)/4.0) * ((float)(echon) - (float)(opetl)/4.0);  /* shifted parabola */
+		    				arf1_var = ((float)(echon) - (float)(opetl)/4.0) * ((float)(echon) - (float)(opetl)/4.0);  /* shifted parabola */
 							tmpmax = ((float)(opetl-1) - (float)(opetl)/4.0) *  ((float)(opetl-1) - (float)(opetl)/4.0) ;    /* max value of the parabola */
 							arf1_var *= (arf180 - a_rf1) / tmpmax; /* scale */
 							arf1_var += a_rf1;  /* shift up */
