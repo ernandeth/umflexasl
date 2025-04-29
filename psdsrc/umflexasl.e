@@ -183,7 +183,7 @@ float arf180, arf180ns;
 
 int ro_type = 2 with {1, 3, 2, VIS, "FSE (1), SPGR (2), or bSSFP (3)",};
 float SE_factor = 1.5 with {0.01, 10.0 , 1.5, VIS, "Adjustment for the slice width of the refocuser",};
-int	doNonSelRefocus = 0 with {0, 1, 0, VIS, "Use a RECT non-selective refocuser pulse",};
+int	doNonSelRefocus = 1 with {0, 1, 0, VIS, "Use a RECT non-selective refocuser pulse",};
 
 int fatsup_mode = 1 with {0, 3, 1, VIS, "none (0), CHESS (1), or SPIR (2)",};
 int fatsup_off = -520 with { , , -520, VIS, "fat suppression pulse frequency offset (Hz)",};
@@ -3622,8 +3622,9 @@ STATUS scan( void )
 							/* in VFA, the first refocusers are higher - trying to approximate that here*/
 							/* if(echon==0) arf1_var = (arf180 + a_rf1)/2.0;  */
 
-							/* New approach: do a quadrative schedule with 
-							   the minimum of parabola occurring at one quarter of the way in the echo train  */
+							/* New approach: do a quadratic schedule with 
+							   the minimum of parabola occurring at one quarter of the way in the echo train  
+							   y = (x-xmax/4)^2 */
 							arf1_var = ((float)(echon) - (float)(opetl)/4.0) * ((float)(echon) - (float)(opetl)/4.0);  /* shifted parabola */
 							tmpmax = ((float)(opetl-1) - (float)(opetl)/4.0) *  ((float)(opetl-1) - (float)(opetl)/4.0) ;    /* max value of the parabola */
 
@@ -4436,6 +4437,7 @@ int write_scan_info() {
 			fprintf(finfo, "\t%-50s%20f %s\n", "Flip (inversion) angle:", opflip, "deg");
 			fprintf(finfo, "\t%-50s%20f %s\n", "Echo time:", (float)opte*1e-3, "ms");
 			fprintf(finfo, "\t%-50s%20d \n", "variable FA flag:", varflip );
+			fprintf(finfo, "\t%-50s%20d \n", "Non-selective rect pulse refocuser ", doNonSelRefocus );		
 			break;
 		case 2: /* SPGR */
 			fprintf(finfo, "\t%-50s%20s\n", "Readout type:", "SPGR");
