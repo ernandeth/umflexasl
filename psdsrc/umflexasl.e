@@ -1054,7 +1054,8 @@ STATUS predownload( void )
 	/* update sinc pulse parameters */
 	pw_rf0 = 3200;
 	pw_rf1 = 3200;
-	
+	pw_rf1ns = 1000;
+
 	/* adjust fat sup pw s.t. desired bandwidth is achieved */
 	pw_rffs = 3200; /* nominal SINC1 pulse width */
 	pw_rffs *= (int)round(NOM_BW_SINC1_90 / (float)fatsup_bw); /* adjust bandwidth */
@@ -1544,7 +1545,10 @@ STATUS predownload( void )
 		case 1: /* FSE */
 			
 			/* calculate minimum esp (time from rf1 to next rf1) */
-			minesp += pw_gzrf1/2 + pw_gzrf1d; /* 2nd half of rf1 pulse */
+			if (doNonSelRefocus)
+				minesp += pw_rf1ns/2;
+			else
+				minesp += pw_gzrf1/2 + pw_gzrf1d; /* 2nd half of rf1 pulse */
 			minesp += pgbuffertime;
 			minesp += pw_gzrf1trap2a + pw_gzrf1trap2 + pw_gzrf1trap2d; /* post-rf crusher */
 			minesp += pgbuffertime;
@@ -1560,7 +1564,10 @@ STATUS predownload( void )
 			minesp += pgbuffertime;
 			minesp += pw_gzrf1trap1a + pw_gzrf1trap1 + pw_gzrf1trap1d; /* pre-rf crusher */
 			minesp += pgbuffertime;
-			minesp += pw_gzrf1a + pw_gzrf1/2; /* 1st half of rf1 pulse */
+			if (doNonSelRefocus)
+				minesp += pw_rf1ns/2;
+			else
+				minesp += pw_gzrf1a + pw_gzrf1/2; /* 1st half of rf1 pulse */
 
 			/* calculate minimum TE (time from center of rf0 to center of readout pulse) */
 			minte += pw_gzrf0/2 + pw_gzrf0d; /* 2nd half of rf0 pulse */
@@ -2413,7 +2420,7 @@ STATUS pulsegen( void )
 
 	fprintf(stderr, "pulsegen(): generating RECT rf1 (rf1ns pulse)...\n");
 	tmploc += pgbuffertime; /* start time for rf1ns */
-	CONST(RHO, rf1ns, tmploc, 1000, opflip, loggrd);
+	CONST(RHO, rf1ns, tmploc + psd_rf_wait, 1000, opflip, loggrd);
 	fprintf(stderr, "\tstart: %dus, ", tmploc);
 	tmploc += pw_rf1ns ; /* end time for rf1ns pulse */
 	fprintf(stderr, " end: %dus\n", tmploc);
@@ -3172,7 +3179,7 @@ STATUS prescanCore() {
 						    
 					/* New approach: do a quadrative schedule with 
 					the minimum of parabola occurring at one quarter of the way in the echo train  */
-	    			arf1_var = ((float)(echon) - (float)(opetl)/4.0) * ((float)(echon) - (float)(opetl)/4.0);  /* shifted parabola */
+	    				arf1_var = ((float)(echon) - (float)(opetl)/4.0) * ((float)(echon) - (float)(opetl)/4.0);  /* shifted parabola */
 					tmpmax = ((float)(opetl-1) - (float)(opetl)/4.0) *  ((float)(opetl-1) - (float)(opetl)/4.0) ;    /* max value of the parabola */
 
 					if(doNonSelRefocus)
@@ -3181,7 +3188,7 @@ STATUS prescanCore() {
 						arf1_var += a_rf1ns;  /* shift up */
 
 						/* but we cap it at 90 degree pulse */
-							if (arf1_var > arf180ns/2.0) arf1_var = arf180ns/2.0;;
+						if (arf1_var > arf180ns/2.0) arf1_var = arf180ns/2.0;;
 					}
 					else
 					{
@@ -3189,7 +3196,7 @@ STATUS prescanCore() {
 						arf1_var += a_rf1;  /* shift up */
 
 						/* but we cap it at 90 degree pulse */
-							if (arf1_var > arf180/2.0) arf1_var = arf180/2.0;;
+						if (arf1_var > arf180/2.0) arf1_var = arf180/2.0;;
 					}
 					
 					/* set the transmitter gain after the adjustments */
@@ -3607,35 +3614,51 @@ STATUS scan( void )
 
 							arf1_var = (arf180 + a_rf1)/2;
 						}
-						
 						if(varflip) {
-
 							/* variable flip angle refocuser pulses to get more signal 
-							- linearly increasing schedule */
+							   - linearly increasing schedule */
 							/* arf1_var = a_rf1 + (float)echon*(arf180 - a_rf1)/(float)(opetl-1); */
-							
+
 							/* in VFA, the first refocusers are higher - trying to approximate that here*/
 							/* if(echon==0) arf1_var = (arf180 + a_rf1)/2.0;  */
-									
+
 							/* New approach: do a quadrative schedule with 
-							the minimum of parabola occurring at one quarter of the way in the echo train  */
-		    				arf1_var = ((float)(echon) - (float)(opetl)/4.0) * ((float)(echon) - (float)(opetl)/4.0);  /* shifted parabola */
+							   the minimum of parabola occurring at one quarter of the way in the echo train  */
+							arf1_var = ((float)(echon) - (float)(opetl)/4.0) * ((float)(echon) - (float)(opetl)/4.0);  /* shifted parabola */
 							tmpmax = ((float)(opetl-1) - (float)(opetl)/4.0) *  ((float)(opetl-1) - (float)(opetl)/4.0) ;    /* max value of the parabola */
-							arf1_var *= (arf180 - a_rf1) / tmpmax; /* scale */
-							arf1_var += a_rf1;  /* shift up */
 
-							/* but we cap it at 90 degree pulse */
-							if (arf1_var > arf180/2.0) arf1_var = arf180/2.0;;
+							if(doNonSelRefocus)
+							{
+								arf1_var *= (arf180ns - a_rf1ns) / tmpmax; /* scale */
+								arf1_var += a_rf1ns;  /* shift up */
 
+								/* but we cap it at 150 degree pulse */
+								if (arf1_var > arf180ns * 0.833 ) arf1_var = arf180ns * 0.833;;
+
+								/* set the transmitter gain after the adjustments */
+								setiamp(arf1_var * MAX_PG_WAMP, &rf1ns,0);
+								fprintf(stderr,"\nadjusting var flip ang: %f (arf180=%f)", arf1_var, arf180 ); 
+							}
+							else
+							{
+								arf1_var *= (arf180 - a_rf1) / tmpmax; /* scale */
+								arf1_var += a_rf1;  /* shift up */
+
+								/* but we cap it at 150 degree pulse */
+								if (arf1_var > arf180 * 0.833) arf1_var = arf180 * 0.833;;
+
+								/* set the transmitter gain after the adjustments */
+								setiamp(arf1_var * MAX_PG_WAMP, &rf1,0);
+								fprintf(stderr,"\nadjusting var flip ang: %f (arf180=%f)", arf1_var, arf180 ); 
+							}
 
 						}
 
-					
-						/* set the transmitter gain after the adjustments */
-						setiamp(arf1_var * MAX_PG_WAMP, &rf1,0);
-						fprintf(stderr,"\nadjusting var flip ang: %f (arf180=%f)", arf1_var, arf180 ); 
-					
-						ttotal += play_rf1(90);
+						if (doNonSelRefocus)
+							ttotal += play_rf1ns(90*(ro_type == 1));
+						else
+							ttotal += play_rf1(90*(ro_type == 1));
+
 					}
 					else {
 						ttotal += play_rf1(rfspoil_flag*117*(echon + ndisdaqechoes));
