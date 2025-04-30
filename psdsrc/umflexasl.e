@@ -1014,6 +1014,7 @@ STATUS predownload( void )
 
 	if (ro_type != 1){
 		SE_factor=1.0;
+		doNonSelRefocus = 0;
 	}
 	fprintf(stderr, "\npredownload(): SE_factor (SE refocuse sl. thick factor)  %f\n", SE_factor);
 
@@ -3180,7 +3181,7 @@ STATUS prescanCore() {
 					/* New approach: do a quadrative schedule with 
 					the minimum of parabola occurring at one quarter of the way in the echo train  */
 	    				arf1_var = ((float)(echon) - (float)(opetl)/4.0) * ((float)(echon) - (float)(opetl)/4.0);  /* shifted parabola */
-					tmpmax = ((float)(opetl-1) - (float)(opetl)/4.0) *  ((float)(opetl-1) - (float)(opetl)/4.0) ;    /* max value of the parabola */
+					tmpmax = ((float)(opetl) - (float)(opetl)/4.0) *  ((float)(opetl) - (float)(opetl)/4.0) ;    /* max value of the parabola */
 
 					if(doNonSelRefocus)
 					{
@@ -3360,7 +3361,10 @@ STATUS scan( void )
 		for (echon = 0; echon < opetl+ndisdaqechoes; echon++) {
 			fprintf(stderr, "scan(): playing flip pulse for disdaq train %d (t = %d / %.0f us)...\n", disdaqn, ttotal, pitscan);
 			if (ro_type == 1) {/* FSE - CPMG */
-				ttotal += play_rf1(90 );
+				if (doNonSelRefocus)
+					ttotal += play_rf1ns(90 );
+				else
+					ttotal += play_rf1(90 );
 				}
 			else
 				ttotal += play_rf1(0);
@@ -3584,7 +3588,10 @@ STATUS scan( void )
 				for (echon = 0; echon < ndisdaqechoes; echon++) {
 					fprintf(stderr, "scan(): playing flip pulse for frame %d, shot %d, disdaq echo %d (t = %d / %.0f us)...\n", framen, shotn, echon, ttotal, pitscan);
 					if (ro_type == 1) {/* FSE - CPMG */
-						ttotal += play_rf1(90 );
+						if (doNonSelRefocus)
+							ttotal += play_rf1ns(90 );
+						else
+							ttotal += play_rf1(90 );
 					}
 					else
 						ttotal += play_rf1(rfspoil_flag*117*echon);
@@ -3626,7 +3633,7 @@ STATUS scan( void )
 							   the minimum of parabola occurring at one quarter of the way in the echo train  
 							   y = (x-xmax/4)^2 */
 							arf1_var = ((float)(echon) - (float)(opetl)/4.0) * ((float)(echon) - (float)(opetl)/4.0);  /* shifted parabola */
-							tmpmax = ((float)(opetl-1) - (float)(opetl)/4.0) *  ((float)(opetl-1) - (float)(opetl)/4.0) ;    /* max value of the parabola */
+							tmpmax = ((float)(opetl) - (float)(opetl)/4.0) *  ((float)(opetl) - (float)(opetl)/4.0) ;    /* max value of the parabola */
 
 							if(doNonSelRefocus)
 							{
@@ -3654,16 +3661,18 @@ STATUS scan( void )
 							}
 
 						}
-
-						if (doNonSelRefocus)
-							ttotal += play_rf1ns(90*(ro_type == 1));
-						else
-							ttotal += play_rf1(90*(ro_type == 1));
-
 					}
-					else {
+					if (ro_type==2)  /* SPGR */
+					{
 						ttotal += play_rf1(rfspoil_flag*117*(echon + ndisdaqechoes));
 						setphase(rfspoil_flag*117*(echon + ndisdaqechoes), &echo1, 0);
+					}
+					else  /* FSE and SSFP cases */
+					{
+						if (doNonSelRefocus)
+							ttotal += play_rf1ns(90 * (ro_type == 1) );
+						else
+							ttotal += play_rf1(90 * (ro_type == 1));
 					}
 
 					/* load the DAB */
