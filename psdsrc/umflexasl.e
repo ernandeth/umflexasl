@@ -3661,18 +3661,16 @@ STATUS scan( void )
 							}
 
 						}
-					}
-					if (ro_type==2)  /* SPGR */
-					{
-						ttotal += play_rf1(rfspoil_flag*117*(echon + ndisdaqechoes));
-						setphase(rfspoil_flag*117*(echon + ndisdaqechoes), &echo1, 0);
-					}
-					else  /* FSE and SSFP cases */
-					{
+
 						if (doNonSelRefocus)
 							ttotal += play_rf1ns(90 * (ro_type == 1) );
 						else
 							ttotal += play_rf1(90 * (ro_type == 1));
+					}
+					else  /* FSE and SSFP cases */
+					{
+						ttotal += play_rf1(rfspoil_flag*117*(echon + ndisdaqechoes));
+						setphase(rfspoil_flag*117*(echon + ndisdaqechoes), &echo1, 0);
 					}
 
 					/* load the DAB */
