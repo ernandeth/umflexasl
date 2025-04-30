@@ -1826,15 +1826,15 @@ STATUS predownload( void )
 	absmintr += (prep1_id > 0)*(dur_prep1core + TIMESSI + prep1_pld + TIMESSI);
 	absmintr += (prep2_id > 0)*(dur_prep2core + TIMESSI + prep2_pld + TIMESSI);
 	absmintr += (fatsup_mode > 0)*(dur_fatsupcore + TIMESSI);
+
 	if (ro_type == 1) /* FSE - add the rf0 pulse */
-	{
 		absmintr += dur_rf0core + TIMESSI;
 
-		if(doNonSelRefocus)
-			absmintr += (opetl + ndisdaqechoes) * (dur_rf1nscore + TIMESSI + dur_seqcore + TIMESSI);
-		else
-			absmintr += (opetl + ndisdaqechoes) * (dur_rf1core + TIMESSI + dur_seqcore + TIMESSI);
-	}
+	if(doNonSelRefocus) /* happens only in FSE mode */
+		absmintr += (opetl + ndisdaqechoes) * (dur_rf1nscore + TIMESSI + dur_seqcore + TIMESSI);
+	else
+		absmintr += (opetl + ndisdaqechoes) * (dur_rf1core + TIMESSI + dur_seqcore + TIMESSI);
+	
 
 	if (exist(opautotr) == PSD_MINIMUMTR)
 		optr = absmintr;	
@@ -3180,7 +3180,7 @@ STATUS prescanCore() {
 						    
 					/* New approach: do a quadrative schedule with 
 					the minimum of parabola occurring at one quarter of the way in the echo train  */
-	    				arf1_var = ((float)(echon) - (float)(opetl)/4.0) * ((float)(echon) - (float)(opetl)/4.0);  /* shifted parabola */
+	    			arf1_var = ((float)(echon) - (float)(opetl)/4.0) * ((float)(echon) - (float)(opetl)/4.0);  /* shifted parabola */
 					tmpmax = ((float)(opetl) - (float)(opetl)/4.0) *  ((float)(opetl) - (float)(opetl)/4.0) ;    /* max value of the parabola */
 
 					if(doNonSelRefocus)
