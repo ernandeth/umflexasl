@@ -196,7 +196,7 @@ int rf1_b1calib = 0 with {0, 1, 0, VIS, "option to sweep B1 amplitudes across fr
 
 int pgbuffertime = 248 with {0, , 248, VIS, "gradient IPG buffer time (us)",};
 int pcasl_buffertime = 0 with {0, , 248, VIS, "PCASL core - gradient IPG buffer time (us)",}; /* used to be 100 */
-float crushfac = 2.0 with {0, 10, 0, VIS, "crusher amplitude factor (a.k.a. cycles of phase/vox; dk_crush = crushfac*kmax)",};
+float crushfac = 4.0 with {0, 10, 0, VIS, "crusher amplitude factor (a.k.a. cycles of phase/vox; dk_crush = crushfac*kmax)",};
 int kill_grads = 0 with {0, 1, 0, VIS, "option to turn off readout gradients",};
 
 /* Trajectory cvs */
@@ -1388,10 +1388,11 @@ STATUS predownload( void )
 	pw_rfps4cd = tmp_pwd;
 	a_rfps4c = tmp_a;
 
+
 	pw_gzrffsspoil = tmp_pw;
-	pw_gzrffsspoila = tmp_pwa;
+	pw_gzrffsspoila = tmp_pwa ;
 	pw_gzrffsspoild = tmp_pwd;
-	a_gzrffsspoil = tmp_a;
+	a_gzrffsspoil = tmp_a ;
 
 	pw_gzrf1trap1 = tmp_pw;
 	pw_gzrf1trap1a = tmp_pwa;
