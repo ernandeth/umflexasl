@@ -283,7 +283,7 @@ float	pcasl_distance_adjust; /*cm - distance from the iso-center after table mov
 float	pcasl_RFfreq;
 
 /* adding velocity selectivity shift to the VSI pulses (optional)*/
-int		doVelSpectrum = 0 with {0,2,0, VIS, "Velocity Spectrum imaging: nothing(0) FTVS velocity target sweep (1) BIR8 velocity encoding gradient(2)"};  /* sweep velocity target in FTVS pulses (change the phase)*/
+int		doVelSpectrum = 0 with {0,3,0, VIS, "Velocity Spectrum imaging: nothing(0) FTVS velocity target sweep (1) BIR8 velocity encoding gradient(2) PIR8, positive only (3)"};  /* sweep velocity target in FTVS pulses (change the phase)*/
 float	vel_target = 0.0 /* use for FTVS case */;
 float   vspectrum_grad = -4.0;  /* use this for BIR8 */
 int		vspectrum_Navgs = 2;
@@ -1212,6 +1212,11 @@ STATUS predownload( void )
 		fprintf(stderr, "predownload(): doVelspectrum=2 -> setting the first prep1_gmax to -4.0\n");
 		vspectrum_grad = -4.0;
 	}
+	if (doVelSpectrum==3){
+		fprintf(stderr, "predownload(): doVelspectrum=3 -> setting the first prep1_gmax to 0.0\n");
+		vspectrum_grad = 0.0;
+	}
+	
 	/* Update the asl prep pulse gradients */
 	a_prep1gradlbl = (prep1_id > 0) ? (prep1_gmax) : (0);
 	ia_prep1gradlbl = (int)ceil(a_prep1gradlbl / ZGRAD_max * (float)MAX_PG_WAMP);
@@ -1343,6 +1348,10 @@ STATUS predownload( void )
 		/* velocity spectrum default venc gradient increments - so that it goes from -4.0 to +4.0 G/cm */
 		prep2_delta_gmax = 2.0*4.0 / ((float)nframes/(float)vspectrum_Navgs -1)  ;
 	}
+	if (doVelSpectrum==3){
+		/* velocity spectrum default venc gradient increments - so that it goes from 0.0 to +4.0 G/cm */
+		prep2_delta_gmax = 4.0 / ((float)nframes/(float)vspectrum_Navgs -1)  ;
+	}
 
 	/* -------------------------*/
 
@@ -1389,7 +1398,7 @@ STATUS predownload( void )
 	a_rfps4c = tmp_a;
 
 
-	pw_gzrffsspoil = tmp_pw;
+	pw_gzrffsspoil = tmp_pw + 2000; /*Making sure that the transverse magnetization is spoiled and we don't get stimulated echoes from the prep pulse*/
 	pw_gzrffsspoila = tmp_pwa ;
 	pw_gzrffsspoild = tmp_pwd;
 	a_gzrffsspoil = tmp_a ;
@@ -2909,6 +2918,7 @@ int determine_label_type(int mode, int framen)
 /* function for playing fat sup pulse */
 int play_fatsup() {
 	int ttotal = 0;
+
 	fprintf(stderr, "\tplay_fatsup(): playing fat sup pulse (%d us)...\n", dur_fatsupcore + TIMESSI);
 
 	/* Play fatsup core */
@@ -3428,8 +3438,8 @@ STATUS scan( void )
 			vspectrum_rep++ ;
 		}
 
-		/* Method 2: If using BIR8 pulses - sweep through the venc gradients*/
-		if (doVelSpectrum==2 && framen >= nm0frames){
+		/* Method 2: If using BIR8 pulses - sweep through the venc gradients (options 2 and 3)*/
+		if (doVelSpectrum>=2 && framen >= nm0frames){
 			fprintf(stderr, "\nscan():Encoding velocity spectrum Avgs. counter: %d \n", vspectrum_rep); 
 			if (vspectrum_rep == vspectrum_Navgs)
 			{
@@ -3484,6 +3494,9 @@ STATUS scan( void )
 			pcasl_duration 		= pcasl_period * pcasl_Npulses; 	
 			pcasl_pld		= 4*(int)(mrf_pcasl_pld[framen] * 1e6 / 4);
 
+			pcasl_tbgs1 		= 0;
+			pcasl_tbgs2 		= 0;
+			
 			prep1_type		= mrf_prep1_type[framen];
 			prep1_pld		= 4*(int)(mrf_prep1_pld[framen]* 1e6 / 4); 
 
