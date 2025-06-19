@@ -3171,17 +3171,17 @@ STATUS prescanCore() {
 						flip[0] = 90 + (vflip)/2         
 					the rest of them are whatever the refocuser flip angle is: 
 						flip[n] = vflip            
-					eg1: 
-						90x - 150y - 120y - 120y -120y ...
-					eg2: 
-						90x - 180y - 180y - 180y -180y ...  */
+					eg1: opflip = 120
+					-->	90x - 150y - 120y - 120y -120y ...
+					eg2: opflip = 180
+					-->	90x - 180y - 180y - 180y -180y ...  */
 
 					if(doNonSelRefocus)
 						arf1_var = (arf180ns + a_rf1ns)/2;
 					else
 						arf1_var = (arf180 + a_rf1)/2;
 				}
-				if(varflip) {
+				if(varflip && echon>0) {
 					/* variable flip angle refocuser pulses to get more signal 
 					- linearly increasing schedule */
 					/* arf1_var = a_rf1 + (float)echon*(arf180 - a_rf1)/(float)(opetl-1); */
@@ -3190,13 +3190,14 @@ STATUS prescanCore() {
 					/* if(echon==0) arf1_var = (arf180 + a_rf1)/2.0;  */
 						    
 					/* New approach: do a quadrative schedule with 
-					the minimum of parabola occurring at one quarter of the way in the echo train  */
+					the minimum of parabola occurring at one quarter of the way in the echo train 
+					Note - the min value will be a_rf1ns (or opflip) */
 	    			arf1_var = ((float)(echon) - (float)(opetl)/4.0) * ((float)(echon) - (float)(opetl)/4.0);  /* shifted parabola */
 					tmpmax = ((float)(opetl) - (float)(opetl)/4.0) *  ((float)(opetl) - (float)(opetl)/4.0) ;    /* max value of the parabola */
 
 					if(doNonSelRefocus)
 					{
-						arf1_var *= (arf180ns - a_rf1ns) / tmpmax; /* scale */
+						arf1_var *= (arf180ns - a_rf1ns) / tmpmax; /* scale to the range from min to 180 */
 						arf1_var += a_rf1ns;  /* shift up */
 
 						/* but we cap it at 150 degree pulse */
@@ -3635,7 +3636,7 @@ STATUS scan( void )
 
 							arf1_var = (arf180 + a_rf1)/2;
 						}
-						if(varflip) {
+						if(varflip && echon>0) {
 							/* variable flip angle refocuser pulses to get more signal 
 							   - linearly increasing schedule */
 							/* arf1_var = a_rf1 + (float)echon*(arf180 - a_rf1)/(float)(opetl-1); */
