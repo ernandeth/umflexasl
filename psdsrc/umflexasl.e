@@ -3181,7 +3181,7 @@ STATUS prescanCore() {
 					else
 						arf1_var = (arf180 + a_rf1)/2;
 				}
-				if(varflip && echon>0) {
+				if(varflip) {
 					/* variable flip angle refocuser pulses to get more signal 
 					- linearly increasing schedule */
 					/* arf1_var = a_rf1 + (float)echon*(arf180 - a_rf1)/(float)(opetl-1); */
@@ -3636,7 +3636,7 @@ STATUS scan( void )
 
 							arf1_var = (arf180 + a_rf1)/2;
 						}
-						if(varflip && echon>0) {
+						if(varflip ) {
 							/* variable flip angle refocuser pulses to get more signal 
 							   - linearly increasing schedule */
 							/* arf1_var = a_rf1 + (float)echon*(arf180 - a_rf1)/(float)(opetl-1); */
