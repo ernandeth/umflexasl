@@ -3635,7 +3635,11 @@ STATUS scan( void )
 								90x - 180y - 180y - 180y -180y ...  */
 
 							arf1_var = (arf180 + a_rf1)/2;
+							
+							if(doNonSelRefocus)
+								arf1_var = (arf180ns + a_rf1ns)/2;
 						}
+
 						if(varflip ) {
 							/* variable flip angle refocuser pulses to get more signal 
 							   - linearly increasing schedule */
@@ -3645,7 +3649,7 @@ STATUS scan( void )
 							/* if(echon==0) arf1_var = (arf180 + a_rf1)/2.0;  */
 
 							/* New approach: do a quadratic schedule with 
-							   the minimum of parabola occurring at one quarter of the way in the echo train  
+							   the minimum of parabola is opflip and will occur at one quarter of the way in the echo train  
 							   y = (x-xmax/4)^2 */
 							arf1_var = ((float)(echon) - (float)(opetl)/4.0) * ((float)(echon) - (float)(opetl)/4.0);  /* shifted parabola */
 							tmpmax = ((float)(opetl) - (float)(opetl)/4.0) *  ((float)(opetl) - (float)(opetl)/4.0) ;    /* max value of the parabola */
