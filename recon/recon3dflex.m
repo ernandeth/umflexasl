@@ -157,20 +157,23 @@ function x = recon3dflex(varargin)
             % compress the data
             [kdata, sing, Vr] = ir_mri_coil_compress(kdata,'ncoil',ncoils);
 
-            % compress the sense maps
-            % kc = fftc(args.smap, 1:3);  % make smaps in kspace 
-            % 
-            % idim = size(kc);  % input dimensions -before compression
-            % n_in = idim(end);
-            % kc = reshape(kc, [], n_in); % [*N n_in]
-            % cckc = kc * Vr;             % compres smaps in  k-smaps
-            % 
-            % odim = idim;
-            % odim(end) = ncoils;  % dimensions after compression
-            % cckc = reshape(cckc,odim);
-            % 
-            % args.smap = ifftc(args.smap, 1:3);
+            if ~isempty(args.smap) && size(args.smap,4)>ncoils
+                fprintf('compressing sense maps down to %d coils to match data compression...', ncoils);
+                % compress the sense maps
+                kc = fftc(args.smap, 1:3);  % make smaps in kspace
 
+                idim = size(kc);  % input dimensions -before compression
+                n_in = idim(end);
+                kc = reshape(kc, [], n_in); % [*N n_in]
+                cckc = kc * Vr;             % compres smaps in  k-smaps
+
+                odim = idim;
+                odim(end) = ncoils;  % dimensions after compression
+                cckc = reshape(cckc,odim);
+
+                args.smap = ifftc(cckc, 1:3);
+            end
+    
         elseif (size(args.smap,4) < ncoils) && (args.coilwise==0)
             ncoils = size(args.smap,4);
             warning('compressing data down to %d coils to match SENSE map...', ncoils);
@@ -200,13 +203,14 @@ function x = recon3dflex(varargin)
     if (args.mrf_mode==0)
         % calculate a new system operator  just once
         [A,w, omega_msk] = make_system_matrix(klocs(:,1:nviews,:), N, fov, nufft_args);
-        if ncoils > 1  && args.coilwise==0 % sensitivity encoding
+        if ncoils > 1  && args.coilwise==0  % sensitivity encoding
             fprintf('... with sense maps\n');
             A = Asense(A,args.smap);
         end
 
         Aold = [];
         Areg = [];
+        Aregtv = [];
         L = 0;
         if args.Reg
             Aold = A;
@@ -219,6 +223,7 @@ function x = recon3dflex(varargin)
             
         end
 
+        
         % set up the parallel pool
         if isempty(gcp('nocreate')), parpool(6), end
         
