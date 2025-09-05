@@ -1167,7 +1167,7 @@ STATUS predownload( void )
 		extraScale = 1.0;
 	}
 	
-	/* Update all the rf amplitudes */
+	/* Update all the rf amplitudes : convert RF amplitude from gauss to fraction of b1max*/
 	a_rf0 = rf0_b1 / maxB1Seq;
 	ia_rf0 = a_rf0 * MAX_PG_WAMP;
 
@@ -3086,7 +3086,7 @@ STATUS prescanCore() {
 
 	int ttotal; 
 	float arf1_var = 0.0;
-	float tmpmax;
+	//float tmpmax= 1.0;
 
 	/* initialize the rotation matrix */
 	setrotate( tmtx0, 0 );
@@ -3192,24 +3192,32 @@ STATUS prescanCore() {
 					/* New approach: do a quadrative schedule with 
 					the minimum of parabola occurring at one quarter of the way in the echo train 
 					Note - the min value will be a_rf1ns (or opflip) */
-	    			arf1_var = ((float)(echon) - (float)(opetl)/4.0) * ((float)(echon) - (float)(opetl)/4.0);  /* shifted parabola */
-					tmpmax = ((float)(opetl) - (float)(opetl)/4.0) *  ((float)(opetl) - (float)(opetl)/4.0) ;    /* max value of the parabola */
+	    			//arf1_var = ((float)(echon) - (float)(opetl)/4.0) * ((float)(echon) - (float)(opetl)/4.0);  /* shifted parabola */
+					//tmpmax = ((float)(opetl) - (float)(opetl)/4.0) *  ((float)(opetl) - (float)(opetl)/4.0) ;    /* max value of the parabola */
+
+					/* New: flip angle schedule is fourth order polynomial based on data by Zhao 1997 , DOI: 10.1002/mrm.27118
+					flip angles in degrees: */
+   					arf1_var = 0.0044*pow(echon+1,4)   - 0.2521*pow(echon+1,3) +   5.3544 *pow(echon+1,2) - 45.0296*(echon+1) + 158.0661;
+					/* cap the RF amplitude at 150 degree pulse */
+					if (arf1_var > 150) arf1_var = 150;;
 
 					if(doNonSelRefocus)
 					{
-						arf1_var *= (arf180ns - a_rf1ns) / tmpmax; /* scale to the range from min to 180 */
-						arf1_var += a_rf1ns;  /* shift up */
+						// scale to relative scale of rho channel [0,1]
+						arf1_var *= arf180ns / 180.0;
+					
+						//arf1_var *= (arf180ns - a_rf1ns) / tmpmax; /* scale to the range from min to 180 */
+						//arf1_var += a_rf1ns;  /* shift up */
 
-						/* but we cap it at 150 degree pulse */
-						if (arf1_var > arf180ns/2.0) arf1_var = arf180ns * 0.833;;
 					}
 					else
 					{
-						arf1_var *= (arf180 - a_rf1) / tmpmax; /* scale */
-						arf1_var += a_rf1;  /* shift up */
+						// scale to relative scale of rho channel [0,1]
+						arf1_var *= arf180 / 180.0;
+					
+						//arf1_var *= (arf180 - a_rf1) / tmpmax; /* scale */
+						//arf1_var += a_rf1;  /* shift up */
 
-						/* but we cap it at 150 degree pulse */
-						if (arf1_var > arf180/2.0) arf1_var = arf180 * 0.833;
 					}
 					
 					/* set the transmitter gain after the adjustments */
@@ -3310,7 +3318,7 @@ STATUS scan( void )
 	int pcasl_type, prep1_type, prep2_type;
 
 	float arf1_var = 0;
-	float tmpmax;
+	//float tmpmax = 1.0;
 
 	fprintf(stderr, "scan(): beginning scan (t = %d / %.0f us)...\n", ttotal, pitscan);
 
@@ -3652,13 +3660,21 @@ STATUS scan( void )
 							/* New approach: do a quadratic schedule with 
 							   the minimum of parabola is opflip and will occur at one quarter of the way in the echo train  
 							   y = (x-xmax/4)^2 */
-							arf1_var = ((float)(echon) - (float)(opetl)/4.0) * ((float)(echon) - (float)(opetl)/4.0);  /* shifted parabola */
-							tmpmax = ((float)(opetl) - (float)(opetl)/4.0) *  ((float)(opetl) - (float)(opetl)/4.0) ;    /* max value of the parabola */
+							//arf1_var = ((float)(echon) - (float)(opetl)/4.0) * ((float)(echon) - (float)(opetl)/4.0);  /* shifted parabola */
+							//tmpmax = ((float)(opetl) - (float)(opetl)/4.0) *  ((float)(opetl) - (float)(opetl)/4.0) ;    /* max value of the parabola */
+							
+							/* New: flip angle schedule is fourth order polynomial based on data by Zhao 1997 , DOI: 10.1002/mrm.27118
+							flip angles in degrees: */
+   							arf1_var = 0.0044*pow(echon+1,4)   - 0.2521*pow(echon+1,3) +   5.3544 *pow(echon+1,2) - 45.0296*(echon+1) + 158.0661;
 
 							if(doNonSelRefocus)
 							{
-								arf1_var *= (arf180ns - a_rf1ns) / tmpmax; /* scale */
-								arf1_var += a_rf1ns;  /* shift up */
+								// scale to relative scale of rho channel [0,1]
+								arf1_var *= a_rf1ns / 180.0;
+
+								//arf1_var *= (arf180ns - a_rf1ns) / tmpmax; /* scale */
+								//arf1_var += a_rf1ns;  /* shift up */
+
 
 								/* but we cap it at 150 degree pulse */
 								if (arf1_var > arf180ns * 0.833 ) arf1_var = arf180ns * 0.833;;
@@ -3669,8 +3685,11 @@ STATUS scan( void )
 							}
 							else
 							{
-								arf1_var *= (arf180 - a_rf1) / tmpmax; /* scale */
-								arf1_var += a_rf1;  /* shift up */
+								// scale to relative scale of rho channel [0,1]
+								arf1_var *= a_rf1 / 180.0;
+
+								//arf1_var *= (arf180 - a_rf1) / tmpmax; /* scale */
+								//arf1_var += a_rf1;  /* shift up */
 
 								/* but we cap it at 150 degree pulse */
 								if (arf1_var > arf180 * 0.833) arf1_var = arf180 * 0.833;;
