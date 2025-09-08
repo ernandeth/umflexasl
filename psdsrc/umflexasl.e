@@ -178,7 +178,7 @@ int nframes = 2 with {1, , 2, VIS, "number of frames",};
 int ndisdaqtrains = 2 with {0, , 2, VIS, "number of disdaq echo trains at beginning of scan loop",};
 int ndisdaqechoes = 0 with {0, , 0, VIS, "number of disdaq echos at beginning of echo train",};
 
-int varflip = 1 with {0,1,1, VIS, "do variable flip angles (FSE case)", };
+int varflip = 1 with {0,1,1, VIS, "do variable flip angles (FSE case)- make sure opflip=180 for this", };
 float arf180, arf180ns; 
 
 int ro_type = 2 with {1, 3, 2, VIS, "FSE (1), SPGR (2), or bSSFP (3)",};
@@ -1356,7 +1356,7 @@ STATUS predownload( void )
 	/* -------------------------*/
 
 	/* read MRF schedule from file */
-	if (mrf_mode ) 
+	if (mrf_mode==1 && doVelSpectrum<1) 
 	{
 		if (read_mrf_fromfile(mrf_sched_id, mrf_deadtime, mrf_pcasl_type, mrf_pcasl_duration, mrf_pcasl_pld, mrf_prep1_type, mrf_prep1_pld, mrf_prep2_type, mrf_prep2_pld) ==0 )
 		{
@@ -3491,7 +3491,7 @@ STATUS scan( void )
 		MRF case:use the values in the mrf tables for the acquisition.  
 		We update the values in every frame
 		*/
-		if (mrf_mode){
+		if (mrf_mode == 1 && doVelSpectrum<1){
 			fprintf(stderr, "\n\n scan(): MRF MODE : updating schedule from mrf tables\n");
 			
 			presat_flag = 0;
@@ -4553,7 +4553,7 @@ int write_scan_info() {
 			break;
 	}
 
-	if (mrf_mode ){
+	if (mrf_mode==1 && doVelSpectrum<1){
 		fprintf(finfo, "\nMRF MODE ON - SEE MRF SCHEDULE LOGS FOR TIMING \n");
 		fprintf(finfo, "\t%-50s%20s%05d \n", "MRF timing file in:", "mrfasl_schedules/", mrf_sched_id );
 	}
