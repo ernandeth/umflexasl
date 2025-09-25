@@ -318,7 +318,7 @@ int debug = 0 with {0,1,0,INVIS,"1 if debug is on ",};
 float echo1bw = 16 with {,,,INVIS,"Echo1 filter bw.in KHz",};
 
 /*MRF mode features*/
-int mrf_mode = 0;
+int mrf_mode = 0 with {0, 2, 0, VIS, "MRF mode. (0)=none, (1)= update ASL timings + rotations every frame, (2)=updates rotations only",};
 int mrf_sched_id = 1;
 float prev_theta = 0.0;  /* rotation angles from last frame */
 float prev_phi = 0.0;    /* rotation angles from last frame */
@@ -1498,7 +1498,7 @@ STATUS predownload( void )
 		epic_error(use_ermes,"failure to generate view transformation matrices", EM_PSD_SUPPORT_FAILURE, EE_ARGS(0));
 		return FAILURE;
 	}
-	if (mrf_mode){
+	if (mrf_mode>0){
 
 		scalerotmats(tmtxtbl, &loggrd, &phygrd, opetl*opnshots*narms*nframes, 0);
 	}else{
@@ -3727,7 +3727,7 @@ STATUS scan( void )
 
 					/* Set the view transformation matrix */
 					rotidx = armn*opnshots*opetl + shotn*opetl + echon;
-					if (mrf_mode==1){
+					if (mrf_mode>0){
 						rotidx += framen*narms*opnshots*opetl;
 					}
 
@@ -4040,7 +4040,7 @@ int genviews() {
 
 	fprintf(stderr, "genviews...():\n");
 
-	if(mrf_mode) mrf_nframes=nframes;
+	if(mrf_mode > 0) mrf_nframes=nframes;
 
 	if (spi_mode>=3){
 		/* external file with rotations*/
@@ -4083,7 +4083,7 @@ int genviews() {
 
 					/* calculate view index */
 					rotidx = armn*opnshots*opetl + shotn*opetl + echon;
-					if(mrf_mode==1){
+					if(mrf_mode >0){
 						rotidx += narms*opnshots*opetl*nfr;
 					}
 
@@ -4123,7 +4123,7 @@ int genviews() {
 							theta = (float)(armn*opetl + echon)*2*M_PI / phi2D; /* polar angle */
 							phi = acos(1 - 2*(float)(armn*opetl + echon)/(float)(narms*opetl)); /* azimuthal angle */
 							
-							if (mrf_mode==1){
+							if (mrf_mode>0){
 								theta += prev_theta;
 								phi += prev_phi;
 							}
@@ -4174,7 +4174,7 @@ int genviews() {
 		}
 		/* in MRF mode -  we use different rotations in each frame.
 		Increment the first of the rotations by the last rotation in the previous frame */
-		if (mrf_mode) {
+		if (mrf_mode >0) {
 			/* prev_theta = (float)(opnshots*opetl*narms*(nfr + 1))*phi3D_1 *2*M_PI / phi2D;  */
 			/* prev_phi = acos(1 - 2*(float)(opnshots*opetl*narms*(nfr + 1))/(float)(opnshots*opetl));  */
 			prev_theta = theta;
