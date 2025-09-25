@@ -170,8 +170,8 @@ float xmitfreq;
 
 int numdda = 4;			/* For Prescan: # of disdaqs ps2*/
 
-float SLEWMAX = 15000.0 with {1000, 25000.0, 12500.0, VIS, "maximum allowed slew rate (G/cm/s)",};
-float GMAX = 4.0 with {0.5, 5.0, 4.0, VIS, "maximum allowed gradient (G/cm)",};
+float SLEWMAX = 12000.0 with {1000, 25000.0, 12500.0, VIS, "maximum allowed slew rate (G/cm/s)",};
+float GMAX = 5.0 with {0.5, 5.0, 4.0, VIS, "maximum allowed gradient (G/cm)",};
 
 /* readout cvs */
 int nframes = 2 with {1, , 2, VIS, "number of frames",};
@@ -196,7 +196,7 @@ int rf1_b1calib = 0 with {0, 1, 0, VIS, "option to sweep B1 amplitudes across fr
 
 int pgbuffertime = 248 with {0, , 248, VIS, "gradient IPG buffer time (us)",};
 int pcasl_buffertime = 0 with {0, , 248, VIS, "PCASL core - gradient IPG buffer time (us)",}; /* used to be 100 */
-float crushfac = 4.0 with {0, 10, 0, VIS, "crusher amplitude factor (a.k.a. cycles of phase/vox; dk_crush = crushfac*kmax)",};
+float crushfac = 2.0 with {0, 10, 0, VIS, "crusher amplitude factor (a.k.a. cycles of phase/vox; dk_crush = crushfac*kmax)",};
 int kill_grads = 0 with {0, 1, 0, VIS, "option to turn off readout gradients",};
 
 /* Trajectory cvs */
