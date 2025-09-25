@@ -4553,9 +4553,10 @@ int write_scan_info() {
 			break;
 	}
 
-	if (mrf_mode==1 && doVelSpectrum<1){
-		fprintf(finfo, "\nMRF MODE ON - SEE MRF SCHEDULE LOGS FOR TIMING \n");
-		fprintf(finfo, "\t%-50s%20s%05d \n", "MRF timing file in:", "mrfasl_schedules/", mrf_sched_id );
+	if (mrf_mode > 0){
+		fprintf(finfo, "\n\tMRF MODE : %d ktrajectory is rotated from frame to frame (see kviews.txt) \n", mrf_mode);
+		if (mrf_mode==1)
+			fprintf(finfo, "\t%-50s%20s%05d \n", "MRF Labeling timing file in:", "mrfasl_schedules/", mrf_sched_id );
 	}
 
 	if (prep1_id == 0)
