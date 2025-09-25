@@ -171,7 +171,7 @@ float xmitfreq;
 int numdda = 4;			/* For Prescan: # of disdaqs ps2*/
 
 float SLEWMAX = 12000.0 with {1000, 25000.0, 12500.0, VIS, "maximum allowed slew rate (G/cm/s)",};
-float GMAX = 5.0 with {0.5, 5.0, 4.0, VIS, "maximum allowed gradient (G/cm)",};
+float GMAX = 4.0 with {0.5, 5.0, 4.0, VIS, "maximum allowed gradient (G/cm)",};
 
 /* readout cvs */
 int nframes = 2 with {1, , 2, VIS, "number of frames",};
