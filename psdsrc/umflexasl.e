@@ -194,7 +194,7 @@ int rfspoil_flag = 1 with {0, 1, 1, VIS, "option to do RF phase cycling (117deg 
 int flowcomp_flag = 0 with {0, 1, 0, VIS, "option to use flow-compensated slice select gradients",};
 int rf1_b1calib = 0 with {0, 1, 0, VIS, "option to sweep B1 amplitudes across frames from 0 to nominal B1 for rf1 pulse",};
 
-int pgbuffertime = 124 with {0, , 248, VIS, "gradient IPG buffer time (us)",}; /* used to be 248 */
+int pgbuffertime = 248 with {0, , 248, VIS, "gradient IPG buffer time (us)",}; /* used to be 248 */
 int pcasl_buffertime = 0 with {0, , 248, VIS, "PCASL core - gradient IPG buffer time (us)",}; /* used to be 100 */
 float crushfac = 2.0 with {0, 10, 0, VIS, "crusher amplitude factor (a.k.a. cycles of phase/vox; dk_crush = crushfac*kmax)",};
 int kill_grads = 0 with {0, 1, 0, VIS, "option to turn off readout gradients",};
