@@ -228,6 +228,7 @@ int prep1_tbgs1 = 0 with {0, , 0, VIS, "ASL prep pulse 1: 1st background suppres
 int prep1_tbgs2 = 0 with {0, , 0, VIS, "ASL prep pulse 1: 2nd background suppression delay (0 = no pulse)",};
 int prep1_tbgs3 = 0 with {0, , 0, VIS, "ASL prep pulse 1: 3rd background suppression delay (0 = no pulse)",};
 int prep1_b1calib = 0 with {0, 1, 0, VIS, "ASL prep pulse 1: option to sweep B1 amplitudes across frames from 0 to nominal B1",};
+int prep1_Npoints = 0 ;
 
 int prep2_id = 0 with {0, , 0, VIS, "ASL prep pulse 2: ID number (0 = no pulse)",};
 int prep2_pld = 0 with {0, , 0, VIS, "ASL prep pulse 2: post-labeling delay (us; includes background suppression)",};
@@ -1027,6 +1028,7 @@ STATUS predownload( void )
 		epic_error(use_ermes,"failure to read in ASL prep 1 pulse", EM_PSD_SUPPORT_FAILURE, EE_ARGS(0));
 		return FAILURE;
 	}
+	prep1_Npoints = prep1_len;
 	
 	fprintf(stderr, "predownload(): calling readprep() to read in ASL prep 2 pulse\n");
 	if (readprep(prep2_id, &prep2_len,
@@ -4209,6 +4211,8 @@ int readprep(int id, int *len,
 			rho_ctl[i] = 0;
 			theta_ctl[i] = 0;
 			grad_ctl[i] = 0;
+			
+			*len = 1;
 		}
 		return 1;
 	}
@@ -4534,6 +4538,14 @@ int write_scan_info() {
 		fprintf(finfo, "\t%-50s%20d\n", "Number of navigator points:", nnav);
 	}
 	fprintf(finfo, "\t%-50s%20f %s\n", "Acquisition window duration:", acq_len*GRAD_UPDATE_TIME*1e-3, "ms");
+
+	if (mrf_mode > 0){
+		fprintf(finfo, "\nMRF MODE : %d . \n\tK-space trajectory is rotated from frame to frame (see kviews.txt) \n", mrf_mode);
+		if (mrf_mode==1)
+			fprintf(finfo, "\t%-50s%20s%05d \n", "MRF Labeling timing file in:", "mrfasl_schedules/ \n", mrf_sched_id );
+		fprintf(finfo, "\n------\n");
+	}
+
 	fprintf(finfo, "Prep parameters:\n");
 	switch (fatsup_mode) {
 		case 0: /* Off */
@@ -4551,12 +4563,6 @@ int write_scan_info() {
 			fprintf(finfo, "\t%-50s%20f %s\n", "SPIR flip angle:", spir_fa, "deg");
 			fprintf(finfo, "\t%-50s%20f %s\n", "SPIR inversion time:", (float)spir_ti*1e-3, "ms");
 			break;
-	}
-
-	if (mrf_mode > 0){
-		fprintf(finfo, "\n\tMRF MODE : %d ktrajectory is rotated from frame to frame (see kviews.txt) \n", mrf_mode);
-		if (mrf_mode==1)
-			fprintf(finfo, "\t%-50s%20s%05d \n", "MRF Labeling timing file in:", "mrfasl_schedules/", mrf_sched_id );
 	}
 
 	if (prep1_id == 0)
