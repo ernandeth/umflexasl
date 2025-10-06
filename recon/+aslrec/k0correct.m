@@ -38,8 +38,10 @@ for c=1:Ncoils
 
         % averaging the navigator data from all the views of each frame as the
         % reference for that frame and that coil
-        tmp = kdata(k0inds,:,f,c);
+        tmp = kdata(k0inds,1,f,c);
         baseline = mean(tmp(:));
+
+        %baseline = -mean(tmp(:));
 
         if options==2
             baseline = 1*exp(i*angle(baseline));

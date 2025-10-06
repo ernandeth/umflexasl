@@ -75,6 +75,11 @@ function x = recon3dflex(varargin)
 
     % get data from pfile
     [kdata,klocs,N,fov] = aslrec.read_data(args.pfile , args.mrf_mode);
+
+    % go to single precision
+    kdata = single(kdata);
+    klocs = single(klocs);
+
     % 
     % if args.coilwise % rearrange for coil-wise reconstruction of frame 1 (for making SENSE maps)
     %     kdata = permute(kdata(:,:,1,:),[1,2,4,3]);
@@ -100,12 +105,21 @@ function x = recon3dflex(varargin)
     % choosing only the selected view for reconstruction and discarding the
     % rest of them.
     if ~isempty(args.selectviews)
-        
-        sv = args.selectviews;
-        nviews = length(sv);
-        
+
+        sv = args.selectviews(:)';
+
+        if args.mrf_mode
+            tmp = repmat(sv, nframes,1);
+            tmp = tmp + nviews*[0:nframes-1]';
+            tmp = tmp';
+            klocs = klocs(:, tmp(:), :);
+
+        else
+            klocs = klocs(:, sv, :);
+        end
         kdata = kdata(:, sv, :, :);
-        klocs = klocs(:, sv, :);
+        nviews = length(sv);
+
     end
 
     % remove navigator data before reconstruction
@@ -203,13 +217,14 @@ function x = recon3dflex(varargin)
     if (args.mrf_mode==0)
         % calculate a new system operator  just once
         [A,w, omega_msk] = make_system_matrix(klocs(:,1:nviews,:), N, fov, nufft_args);
-        if ncoils > 1  && args.coilwise==0 % sensitivity encoding
+        if ncoils > 1  && args.coilwise==0  % sensitivity encoding
             fprintf('... with sense maps\n');
             A = Asense(A,args.smap);
         end
 
         Aold = [];
         Areg = [];
+        Aregtv = [];
         L = 0;
         if args.Reg
             Aold = A;
@@ -222,12 +237,14 @@ function x = recon3dflex(varargin)
             
         end
 
-        % set up the parallel pool
-        if isempty(gcp('nocreate')), parpool(6), end
         
         % loop through frames and recon
         
         %for i = 1:length(args.frames)
+        
+        % if we are using the parallel pool , uncomment this.
+        % set up the parallel pool
+        if isempty(gcp('nocreate')), parpool(4), end
         parfor i = 1:length(args.frames)
 
             framen = args.frames(i);
@@ -247,7 +264,7 @@ function x = recon3dflex(varargin)
                 % case will call Matlab's pcg instead of the cg_solve
                 % below.
                 b = Aold' * b;
-                [tmp, flag, rRes] = pcg(Areg, b(:), 1e-4, args.niter,[],[], x0(:));
+                [tmp, flag, rRes] = pcg(Aregtv, b(:), 1e-4, args.niter,[],[], x0(:));
                 fprintf("Regularized CG ended with residual fraction: %0.3g \n", rRes);
                 x(:,:,:,i) = reshape(tmp, N);
 
@@ -260,6 +277,8 @@ function x = recon3dflex(varargin)
 
     else  % MRF case
         %for i = 1:length(args.frames)
+                
+        if isempty(gcp('nocreate')), parpool(4), end
         parfor i = 1:length(args.frames)
             % Usually just need to do this once, but in MRF mode the system matrix
             % changes from frame to frame.
@@ -280,7 +299,20 @@ function x = recon3dflex(varargin)
             x0 = reshape( A' * (w.*b), N );
             x0 = ir_wls_init_scale(A, b, x0);
 
+
+            Aold = [];
+            Areg = [];
+            Aregtv = [];
+            L = 0;
             if args.Reg
+                Aold = A;
+                L = args.Reg;
+                % define A'A + L*eye operator for Tikhonov Regularization
+                Areg = @(x) A'*A*x + L*x;
+
+                % define A'A + D*eye operator for TV regularization
+                Aregtv = @(x) A'*A*x + L*[diff(x) ; 0] ;
+
                 % solve the problem with CG using regularization - this
                 % case will call Matlab's pcg instead of the cg_solve
                 % below.
@@ -314,6 +346,11 @@ function [A,w, omega_msk] = make_system_matrix(klocs, N, fov, nufft_args)
     A = Gnufft(true(N),[omega,nufft_args]); % NUFFT
 
     w = aslrec.pipedcf(A,10); % calculate density compensation
+
+    % use single precision to make things faster and use less memory
+    A.arg.st.sn = single(A.arg.st.sn);
+    A.arg.st.om = single(A.arg.st.om);
+    w = single(w);
 end
 
 function x_star = cg_solve(x0, A, b, niter, msg_pfx)
