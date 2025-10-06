@@ -245,6 +245,7 @@ function x = recon3dflex(varargin)
         % if we are using the parallel pool , uncomment this.
         % set up the parallel pool
         if isempty(gcp('nocreate')), parpool(4), end
+
         parfor i = 1:length(args.frames)
 
             framen = args.frames(i);
@@ -277,7 +278,7 @@ function x = recon3dflex(varargin)
 
     else  % MRF case
         %for i = 1:length(args.frames)
-                
+               
         if isempty(gcp('nocreate')), parpool(4), end
         parfor i = 1:length(args.frames)
             % Usually just need to do this once, but in MRF mode the system matrix
@@ -298,7 +299,6 @@ function x = recon3dflex(varargin)
             fprintf("frame %d/%d: initializing solution x0 = A'*(w.*b)\n", i, length(args.frames))
             x0 = reshape( A' * (w.*b), N );
             x0 = ir_wls_init_scale(A, b, x0);
-
 
             Aold = [];
             Areg = [];

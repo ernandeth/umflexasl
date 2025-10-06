@@ -170,7 +170,7 @@ float xmitfreq;
 
 int numdda = 4;			/* For Prescan: # of disdaqs ps2*/
 
-float SLEWMAX = 15000.0 with {1000, 25000.0, 12500.0, VIS, "maximum allowed slew rate (G/cm/s)",};
+float SLEWMAX = 12000.0 with {1000, 25000.0, 12500.0, VIS, "maximum allowed slew rate (G/cm/s)",};
 float GMAX = 4.0 with {0.5, 5.0, 4.0, VIS, "maximum allowed gradient (G/cm)",};
 
 /* readout cvs */
@@ -178,11 +178,13 @@ int nframes = 2 with {1, , 2, VIS, "number of frames",};
 int ndisdaqtrains = 2 with {0, , 2, VIS, "number of disdaq echo trains at beginning of scan loop",};
 int ndisdaqechoes = 0 with {0, , 0, VIS, "number of disdaq echos at beginning of echo train",};
 
-int varflip = 0 with {0,1,0, VIS, "do variable flip angles (FSE case)", };
-float arf180; 
+int varflip = 1 with {0,1,1, VIS, "do variable flip angles (FSE case)- make sure opflip=180 for this", };
+float arf180, arf180ns; 
 
 int ro_type = 2 with {1, 3, 2, VIS, "FSE (1), SPGR (2), or bSSFP (3)",};
 float SE_factor = 1.5 with {0.01, 10.0 , 1.5, VIS, "Adjustment for the slice width of the refocuser",};
+int	doNonSelRefocus = 1 with {0, 1, 0, VIS, "Use a RECT non-selective refocuser pulse",};
+
 int fatsup_mode = 1 with {0, 3, 1, VIS, "none (0), CHESS (1), or SPIR (2)",};
 int fatsup_off = -520 with { , , -520, VIS, "fat suppression pulse frequency offset (Hz)",};
 int fatsup_bw = 440 with { , , 440, VIS, "fat suppression bandwidth (Hz)",};
@@ -192,8 +194,8 @@ int rfspoil_flag = 1 with {0, 1, 1, VIS, "option to do RF phase cycling (117deg 
 int flowcomp_flag = 0 with {0, 1, 0, VIS, "option to use flow-compensated slice select gradients",};
 int rf1_b1calib = 0 with {0, 1, 0, VIS, "option to sweep B1 amplitudes across frames from 0 to nominal B1 for rf1 pulse",};
 
-int pgbuffertime = 248 with {100, , 248, VIS, "gradient IPG buffer time (us)",};
-int pcasl_buffertime = 100 with {0, , 248, VIS, "PCASL core - gradient IPG buffer time (us)",};
+int pgbuffertime = 248 with {0, , 248, VIS, "gradient IPG buffer time (us)",}; /* used to be 248 */
+int pcasl_buffertime = 0 with {0, , 248, VIS, "PCASL core - gradient IPG buffer time (us)",}; /* used to be 100 */
 float crushfac = 2.0 with {0, 10, 0, VIS, "crusher amplitude factor (a.k.a. cycles of phase/vox; dk_crush = crushfac*kmax)",};
 int kill_grads = 0 with {0, 1, 0, VIS, "option to turn off readout gradients",};
 
@@ -226,6 +228,7 @@ int prep1_tbgs1 = 0 with {0, , 0, VIS, "ASL prep pulse 1: 1st background suppres
 int prep1_tbgs2 = 0 with {0, , 0, VIS, "ASL prep pulse 1: 2nd background suppression delay (0 = no pulse)",};
 int prep1_tbgs3 = 0 with {0, , 0, VIS, "ASL prep pulse 1: 3rd background suppression delay (0 = no pulse)",};
 int prep1_b1calib = 0 with {0, 1, 0, VIS, "ASL prep pulse 1: option to sweep B1 amplitudes across frames from 0 to nominal B1",};
+int prep1_Npoints = 0 ;
 
 int prep2_id = 0 with {0, , 0, VIS, "ASL prep pulse 2: ID number (0 = no pulse)",};
 int prep2_pld = 0 with {0, , 0, VIS, "ASL prep pulse 2: post-labeling delay (us; includes background suppression)",};
@@ -241,6 +244,9 @@ int prep2_Npoints = 0 ;
 /* Velocity Selective prep pulse axis*/
 int prep_axis = 0;
 
+/* cardiac trigger option */
+int do_cardiac_gating = 0 with {0, 1, 0, VIS, "Flag to control cardiac gating. (1) Do Cardiac Gating. (0) Don't do Cardiac Gating"};
+
 /* Declare PCASL variables (cv)*/
 int pcasl_pld 	= 1500*1e3 with {0, , 0, VIS, "PCASL prep  : (ms) post-labeling delay ( includes background suppression)",};
 int pcasl_duration = 1500*1e3 with {0, , 0, VIS, "PCASL prep  : (ms) Labeling Duration)",}; /* this is the bolus duration, NOT the duration of a single cycle */
@@ -251,38 +257,39 @@ int pcasl_tbgs2 = 0 with {0, , 0, VIS, "PCASL prep  : (us) 2nd background suppre
 int		pcasl_flag = 0; /* when this is turned to 1, prep1 pulse gets replaced with a PCASL pulse*/
 
 int		pcasl_calib = 0 with {0, 1 , 0, VIS, "do PCASL phase calibration?",};
-int		pcasl_calib_frames = 4 with {0, , 100, VIS, "N. frames per phase increment",};
+int		pcasl_calib_frames = 2 with {0, , 100, VIS, "N. frames per phase increment",};
 int		pcasl_calib_cnt = 0;
 float 	phs_cal_step = 0.0;
 
-int		pcasl_period = 1500; /* (us) duration of one of the PCASL 'units' 
-								Li Zhao paper used 1200 - I really want it to shrink it to 1000*/ 
+int		pcasl_period = 1200; /* (us) duration of one of the PCASL 'units' 
+					(here it was 1500 originally))	
+					Li Zhao paper used 1200 - I really want it to shrink it to 1000*/ 
 int 	pcasl_Npulses = 1700;
 int 	pcasl_RFamp_dac = 0;
 float 	pcasl_RFamp = 20;   /*mGauss-  Li Zhao paper used 18 mGauss-is an ~8 deg flip for a 0.5ms hanning
 								Jahanian used ~80 mG (~35 deg.) */
 float 	pcasl_delta_phs = 0;
-float 	pcasl_delta_phs_correction = 0.0;  /* this is about typical */
+float 	pcasl_delta_phs_correction = 0;  /* this is about typical */
 int		pcasl_delta_phs_dac = 0;
 int 	pcasl_RFdur = 500us;
-float 	pcasl_Gamp =  0.7;  /* slice select lobe for PCASL RF pulse G/cm .... Lizhao paper: 0.35
+float 	pcasl_Gamp =  0.6;  /* slice select lobe for PCASL RF pulse G/cm .... Lizhao paper: 0.35
 								Jahanian used 0.6*/
-float	pcasl_Gave = 0.07;  /* average gradient for each pulse in the train.  LiZhao paper: 0.05 
-								Jahanian used 0.39 */
+float	pcasl_Gave = 0.06;  /* average gradient for each pulse in the train.  LiZhao paper: 0.05 
+								Jahanian used 0.039- eASL uses 0.7 / 0.07 */
 float	pcasl_Gref_amp;     /* refocuser gradient */
 int		pcasl_tramp =  120us; 
 int		pcasl_tramp2 =  120us; 
-float	pcasl_distance = 10.0; /*cm - distance from the iso-center */
+float	pcasl_distance = 12.0; /*cm - distance from the iso-center */
 float	pcasl_distance_adjust; /*cm - distance from the iso-center after table movement */
 float	pcasl_RFfreq;
 
 /* adding velocity selectivity shift to the VSI pulses (optional)*/
-int		doVelSpectrum = 0 with {0,2,0, VIS, "Velocity Spectrum imaging: nothing(0) FTVS velocity target sweep (1) BIR8 velocity encoding gradient(2)"};  /* sweep velocity target in FTVS pulses (change the phase)*/
+int		doVelSpectrum = 0 with {0,3,0, VIS, "Velocity Spectrum imaging: nothing(0) FTVS velocity target sweep (1) BIR8 velocity encoding gradient(2) PIR8, positive only (3)"};  /* sweep velocity target in FTVS pulses (change the phase)*/
 float	vel_target = 0.0 /* use for FTVS case */;
 float   vspectrum_grad = -4.0;  /* use this for BIR8 */
 int		vspectrum_Navgs = 2;
 float	vel_target_incr = 1.0;
-float   prep1_delta_gmax = 0.1 ;
+float   prep2_delta_gmax = 0.1 ;
 int	min_dur_pcaslcore = 0;
 int	zero_CTL_grads = 0; /* option to use zero gradients for the control pulses */
 
@@ -295,6 +302,7 @@ int dur_bkgsupcore = 0 with {0, , 0, INVIS, "duration of the background suppress
 int dur_fatsupcore = 0 with {0, , 0, INVIS, "duration of the fat suppression core (us)",};
 int dur_rf0core = 0 with {0, , 0, INVIS, "duration of the slice selective rf0 core (us)",};
 int dur_rf1core = 0 with {0, , 0, INVIS, "duration of the slice selective rf1 core (us)",};
+int dur_rf1nscore = 0 with {0, , 0, INVIS, "duration of the NON-slice selective rf1 core (us)",};
 int dur_seqcore = 0 with {0, , 0, INVIS, "duration of the spiral readout core (us)",};
 int deadtime_pcaslcore = 0 with {0, , 0, INVIS, "deadtime at end of pcasl core (us)",};
 int deadtime_fatsupcore = 0 with {0, , 0, INVIS, "deadtime at end of fatsup core (us)",};
@@ -311,7 +319,7 @@ int debug = 0 with {0,1,0,INVIS,"1 if debug is on ",};
 float echo1bw = 16 with {,,,INVIS,"Echo1 filter bw.in KHz",};
 
 /*MRF mode features*/
-int mrf_mode = 0;
+int mrf_mode = 0 with {0, 2, 0, VIS, "MRF mode. (0)=none, (1)= update ASL timings + rotations every frame, (2)=updates rotations only",};
 int mrf_sched_id = 1;
 float prev_theta = 0.0;  /* rotation angles from last frame */
 float prev_phi = 0.0;    /* rotation angles from last frame */
@@ -542,7 +550,7 @@ STATUS cvinit( void )
 	gettarget(&RHO_max, RHO, &loggrd);
 	gettarget(&THETA_max, THETA, &loggrd);
 	getramptime(&ZGRAD_risetime, &ZGRAD_falltime, ZGRAD, &loggrd);	
-	ZGRAD_risetime *= 2; /* extra fluffy */
+	ZGRAD_risetime *= 1.2; /* slowing the gradient down a little to avoid PNS */
 	fprintf(stderr, "ZGRAD_risetime = %d\n", ZGRAD_risetime);	
 
 @inline Prescan.e PScvinit
@@ -591,14 +599,6 @@ STATUS cveval( void )
 	cvmax(opuser1, 1000);	
 	esp = 4*round(opuser1*1e3/4);
 	
-	if (ro_type == 2) /* SPGR only */
-		piuset += use2;
-	cvdesc(opuser2, "RF spoiling: (0) off, (1) on");
-	cvdef(opuser2, 0);
-	opuser2 = rfspoil_flag;
-	cvmin(opuser2, 0);
-	cvmax(opuser2, 1);	
-	rfspoil_flag = opuser2;
 
 	piuset += use3;
 	cvdesc(opuser3, "Number of frames");
@@ -631,22 +631,6 @@ STATUS cveval( void )
 	cvmin(opuser6, 0);
 	cvmax(opuser6, 100);
 	ndisdaqechoes = opuser6;
-	
-	piuset += use7;
-	cvdesc(opuser7, "Crusher area factor (% kmax)");
-	cvdef(opuser7, crushfac);
-	opuser7 = crushfac;
-	cvmin(opuser7, 0);
-	cvmax(opuser7, 10);
-	crushfac = opuser7;
-	
-	piuset += use8;
-	cvdesc(opuser8, "Flow comp: (0) off, (1) on");
-	cvdef(opuser8, 0);
-	opuser8 = flowcomp_flag;
-	cvmin(opuser8, 0);
-	cvmax(opuser8, 1);	
-	flowcomp_flag = opuser8;
 	
 	piuset += use9;
 	cvdesc(opuser9, "FID mode (no spiral): (0) off, (1) on");
@@ -709,7 +693,144 @@ STATUS cveval( void )
 	cvmax(opuser15, 2);	
 	fatsup_mode = opuser15;
 	
-	if (fatsup_mode == 2) /* only for SPIR */
+	piuset += use16;
+	cvdesc(opuser16, "Num. M0 frames (no label or BGS)");
+	cvdef(opuser16, 0);
+	opuser16= nm0frames;
+	cvmin(opuser16, 0);
+	cvmax(opuser16, 500);	
+	nm0frames = opuser16;
+
+	piuset += use17;
+	cvdesc(opuser17, "Use presaturation pulse? (1) Yes, (0) No ");
+	cvdef(opuser17, 0);
+	opuser17= presat_flag; 
+	cvmin(opuser17, 0);
+	cvmax(opuser17, 1);
+	presat_flag = opuser17;
+
+	piuset += use18;
+	cvdesc(opuser18, "Do Cardiac Gating ? (1) Yes, (0) No");
+	cvdef(opuser18, 0);
+	opuser18 = do_cardiac_gating; 
+	cvmin(opuser18, 0); 
+	cvmax(opuser18, 1);
+	do_cardiac_gating = opuser18;
+	
+	/* GUI variables for  PCASL pulses */
+	
+	piuset += use19;
+	cvdesc(opuser19, "use PCASL? (0=off)");
+	cvdef(opuser19, 0);
+	opuser19 = pcasl_flag;
+	cvmin(opuser19, 0);
+	cvmax(opuser19, 1);	
+	pcasl_flag = opuser19;
+
+	if (pcasl_flag > 0)
+		piuset += use20;
+	cvdesc(opuser20, "Labeling plane distance to center of Rx (mm)");
+	cvdef(opuser20, 0);
+	opuser20 = pcasl_distance*10;
+	cvmin(opuser20, 0);
+	cvmax(opuser20, 500);	
+	pcasl_distance = opuser20/10.0;  /* cm */
+
+	if (pcasl_flag > 0)
+		piuset += use21;
+	cvdesc(opuser21, "PCASL PLD (ms)");
+	cvdef(opuser21, 0);
+	opuser21 = pcasl_pld/1e3;
+	cvmin(opuser21, 0);
+	cvmax(opuser21, 99999);	
+	pcasl_pld = 4*round(opuser21*1e3/4);
+	
+	if (pcasl_flag > 0)
+		piuset += use22;
+	cvdesc(opuser22, "PCASL labeling duration (ms)");
+	cvdef(opuser22, 1);
+	opuser22 = pcasl_duration/1e3;
+	cvmin(opuser22, 0);
+	cvmax(opuser22, 5000);	
+	pcasl_duration = 4*round(opuser22*1e3/4);
+
+	/* GUI variables for prep1 pulse*/
+
+	piuset += use23;
+	cvdesc(opuser23, "Prep 1 pulse id (0=off)");
+	cvdef(opuser23, 0);
+	opuser23 = prep1_id;
+	cvmin(opuser23, 0);
+	cvmax(opuser23, 99999);	
+	prep1_id = opuser23;
+		
+	if (prep1_id > 0)
+		piuset += use24;
+	cvdesc(opuser24, "Prep 1 PLD (ms)");
+	cvdef(opuser24, 0);
+	opuser24 = prep1_pld*1e-3;
+	cvmin(opuser24, 0);
+	cvmax(opuser24, 99999);	
+	prep1_pld = 4*round(opuser24*1e3/4);
+	
+	if (prep1_id > 0)
+		piuset += use25;
+	cvdesc(opuser25, "Prep 1 max B1 amp (mG)");
+	cvdef(opuser25, 0);
+	opuser25 = prep1_rfmax;
+	cvmin(opuser25, 0);
+	cvmax(opuser25, 500);	
+	prep1_rfmax = opuser25;
+	
+	if (prep1_id > 0)
+		piuset += use26;
+	cvdesc(opuser26, "Prep 1 max G amp (G/cm)");
+	cvdef(opuser26, 0);
+	opuser26 = prep1_gmax;
+	cvmin(opuser26, -GMAX);
+	cvmax(opuser26, GMAX);	
+	prep1_gmax = opuser26;
+	
+	/* GUI variables for prep pulse 2 */
+	piuset += use27;
+	cvdesc(opuser27, "Prep 2 pulse id (0=off)");
+	cvdef(opuser27, 0);
+	opuser27 = prep2_id;
+	cvmin(opuser27, 0);
+	cvmax(opuser27, 99999);	
+	prep2_id = opuser27;
+		
+	if (prep2_id > 0)
+		piuset += use28;
+	cvdesc(opuser28, "Prep 2 PLD (ms)");
+	cvdef(opuser28, 0);
+	opuser28 = prep2_pld*1e-3;
+	cvmin(opuser28, 0);
+	cvmax(opuser28, 99999);	
+	prep2_pld = 4*round(opuser28*1e3/4);
+	
+	if (prep2_id > 0)
+		piuset += use29;
+	cvdesc(opuser29, "Prep 2 max B1 amp (mG)");
+	cvdef(opuser29, 0);
+	opuser29 = prep2_rfmax;
+	cvmin(opuser29, 0);
+	cvmax(opuser29, 500);	
+	prep2_rfmax = opuser29;
+	
+	if (prep2_id > 0)
+		piuset += use30;
+	cvdesc(opuser30, "Prep 2 max G amp (G/cm)");
+	cvdef(opuser30, 0);
+	opuser30 = prep2_gmax;
+	cvmin(opuser30, 0);
+	cvmax(opuser30, GMAX);	
+	prep2_gmax = opuser30;
+	
+	/* Let's not use these ... GE reserved opuser CVs start at opuser36 */
+
+	/*
+	if (fatsup_mode == 2) // only for SPIR
 		piuset += use16;
 	cvdesc(opuser16, "SPIR flip angle (deg)");
 	cvdef(opuser16, 0);
@@ -718,7 +839,7 @@ STATUS cveval( void )
 	cvmax(opuser16, 360);	
 	spir_fa = opuser16;
 	
-	if (fatsup_mode == 2) /* only for SPIR */
+	if (fatsup_mode == 2) // only for SPIR 
 		piuset += use17;
 	cvdesc(opuser17, "SPIR inversion time (ms)");
 	cvdef(opuser17, 0);
@@ -727,112 +848,6 @@ STATUS cveval( void )
 	cvmax(opuser17, 5000);	
 	spir_ti = 4*round(opuser17*1e3/4);
 
-	piuset += use18;
-	cvdesc(opuser18, "Prep 1 pulse id (0=off)");
-	cvdef(opuser18, 0);
-	opuser18 = prep1_id;
-	cvmin(opuser18, 0);
-	cvmax(opuser18, 99999);	
-	prep1_id = opuser18;
-		
-	if (prep1_id > 0)
-		piuset += use19;
-	cvdesc(opuser19, "Prep 1 PLD (ms)");
-	cvdef(opuser19, 0);
-	opuser19 = prep1_pld*1e-3;
-	cvmin(opuser19, 0);
-	cvmax(opuser19, 99999);	
-	prep1_pld = 4*round(opuser19*1e3/4);
-	
-	if (prep1_id > 0)
-		piuset += use20;
-	cvdesc(opuser20, "Prep 1 max B1 amp (mG)");
-	cvdef(opuser20, 0);
-	opuser20 = prep1_rfmax;
-	cvmin(opuser20, 0);
-	cvmax(opuser20, 500);	
-	prep1_rfmax = opuser20;
-	
-	if (prep1_id > 0)
-		piuset += use21;
-	cvdesc(opuser21, "Prep 1 max G amp (G/cm)");
-	cvdef(opuser21, 0);
-	opuser21 = prep1_gmax;
-	cvmin(opuser21, -GMAX);
-	cvmax(opuser21, GMAX);	
-	prep1_gmax = opuser21;
-	
-	if (prep1_id > 0)
-		piuset += use22;
-	cvdesc(opuser22, "Prep 1 mod pattern: (1) LC, (2) CL, (3) L, (4), C");
-	cvdef(opuser22, 1);
-	opuser22 = prep1_mod;
-	cvmin(opuser22, 1);
-	cvmax(opuser22, 4);	
-	prep1_mod = opuser22;
-	
-	if (prep1_id > 0)
-		piuset += use23;
-	cvdesc(opuser23, "Prep 1 BGS 1 delay (0=off) (ms)");
-	cvdef(opuser23, 0);
-	opuser23 = prep1_tbgs1*1e-3;
-	cvmin(opuser23, 0);
-	cvmax(opuser23, 20000);	
-	prep1_tbgs1 = 4*round(opuser23*1e3/4);
-	
-	if (prep1_id > 0)
-		piuset += use24;
-	cvdesc(opuser24, "Prep 1 BGS 2 delay (0=off) (ms)");
-	cvdef(opuser24, 0);
-	opuser24 = prep1_tbgs2*1e-3;
-	cvmin(opuser24, 0);
-	cvmax(opuser24, 20000);	
-	prep1_tbgs2 = 4*round(opuser24*1e3/4);
-	
-	if (prep1_id > 0)
-		piuset += use25;
-	cvdesc(opuser25, "Prep 1 BGS 3 delay (0=off) (ms)");
-	cvdef(opuser25, 0);
-	opuser25 = prep1_tbgs3*1e-3;
-	cvmin(opuser25, 0);
-	cvmax(opuser25, 20000);	
-	prep1_tbgs3= 4*round(opuser25*1e3/4);
-	
-	piuset += use26;
-	cvdesc(opuser26, "Prep 2 pulse id (0=off)");
-	cvdef(opuser26, 0);
-	opuser26 = prep2_id;
-	cvmin(opuser26, 0);
-	cvmax(opuser26, 99999);	
-	prep2_id = opuser26;
-		
-	if (prep2_id > 0)
-		piuset += use27;
-	cvdesc(opuser27, "Prep 2 PLD (ms)");
-	cvdef(opuser27, 0);
-	opuser27 = prep2_pld*1e-3;
-	cvmin(opuser27, 0);
-	cvmax(opuser27, 99999);	
-	prep2_pld = 4*round(opuser27*1e3/4);
-	
-	if (prep2_id > 0)
-		piuset += use28;
-	cvdesc(opuser28, "Prep 2 max B1 amp (mG)");
-	cvdef(opuser28, 0);
-	opuser28 = prep2_rfmax;
-	cvmin(opuser28, 0);
-	cvmax(opuser28, 500);	
-	prep2_rfmax = opuser28;
-	
-	if (prep2_id > 0)
-		piuset += use29;
-	cvdesc(opuser29, "Prep 2 max G amp (G/cm)");
-	cvdef(opuser29, 0);
-	opuser29 = prep2_gmax;
-	cvmin(opuser29, 0);
-	cvmax(opuser29, GMAX);	
-	prep2_gmax = opuser29;
-	
 	if (prep2_id > 0)
 		piuset += use30;
 	cvdesc(opuser30, "Prep 2 mod pattern: (1) LC, (2) CL, (3) L, (4), C");
@@ -869,33 +884,7 @@ STATUS cveval( void )
 	cvmax(opuser33, 20000);	
 	prep2_tbgs3= 4*round(opuser33*1e3/4);
 
-	/* GUI variables for  PCASL pulse */
-	
-	piuset2 += use34;
-	cvdesc(opuser34, "use PCASL? (0=off)");
-	cvdef(opuser34, 0);
-	opuser34 = pcasl_flag;
-	cvmin(opuser34, 0);
-	cvmax(opuser26, 9);	
-	pcasl_flag = opuser34;
 		
-	if (pcasl_flag > 0)
-		piuset2 += use35;
-	cvdesc(opuser35, "PCASL PLD (ms)");
-	cvdef(opuser35, 0);
-	opuser35 = pcasl_pld/1e3;
-	cvmin(opuser35, 0);
-	cvmax(opuser35, 99999);	
-	pcasl_pld = 4*round(opuser35*1e3/4);
-	
-	if (pcasl_flag > 0)
-		piuset2 += use36;
-	cvdesc(opuser36, "PCASL labeling duration (ms)");
-	cvdef(opuser36, 1);
-	opuser36 = pcasl_duration/1e3;
-	cvmin(opuser36, 0);
-	cvmax(opuser36, 5000);	
-	pcasl_duration = 4*round(opuser36*1e3/4);
 	
 	if (pcasl_flag > 0)
 		piuset2 += use37;
@@ -933,23 +922,33 @@ STATUS cveval( void )
 	cvmax(opuser40, 100);	
 	pcasl_calib_frames = opuser40;
 	
-	
-	if (pcasl_flag > 0)
-		piuset2 += use41;
-	cvdesc(opuser41, "Labeling plane distance to center of Rx (mm)");
-	cvdef(opuser41, 0);
-	opuser41 = pcasl_distance*10;
-	cvmin(opuser41, 0);
-	cvmax(opuser41, 500);	
-	pcasl_distance = opuser41/10.0;  /* cm */
 
-	piuset2 += use42;
-	cvdesc(opuser42, "Num. M0 frames (no label or BGS)");
-	cvdef(opuser42, 0);
-	opuser42= nm0frames;
-	cvmin(opuser42, 0);
-	cvmax(opuser42, 500);	
-	nm0frames = opuser42;
+	if (ro_type == 2) // SPGR only 
+		piuset += use2;
+	cvdesc(opuser2, "RF spoiling: (0) off, (1) on");
+	cvdef(opuser2, 0);
+	opuser2 = rfspoil_flag;
+	cvmin(opuser2, 0);
+	cvmax(opuser2, 1);	
+	rfspoil_flag = opuser2;
+
+	piuset += use7;
+	cvdesc(opuser7, "Crusher area factor (% kmax)");
+	cvdef(opuser7, crushfac);
+	opuser7 = crushfac;
+	cvmin(opuser7, 0);
+	cvmax(opuser7, 10);
+	crushfac = opuser7;
+	
+	piuset += use8;
+	cvdesc(opuser8, "Flow comp: (0) off, (1) on");
+	cvdef(opuser8, 0);
+	opuser8 = flowcomp_flag;
+	cvmin(opuser8, 0);
+	cvmax(opuser8, 1);	
+	flowcomp_flag = opuser8;
+	----------------*/
+
 
 
 
@@ -999,8 +998,8 @@ STATUS predownload( void )
 	int slice;
 	float kzmax;
 	int minesp, minte, absmintr;	
-	float rf0_b1, rf1_b1;
-	float rf180_b1;
+	float rf0_b1, rf1_b1, rf1ns_b1;
+	float rf180_b1, rf180ns_b1;
 	float rfps1_b1, rfps2_b1, rfps3_b1, rfps4_b1;
 	float rffs_b1, rfbs_b1;
 	float prep1_b1, prep2_b1;
@@ -1016,6 +1015,7 @@ STATUS predownload( void )
 
 	if (ro_type != 1){
 		SE_factor=1.0;
+		doNonSelRefocus = 0;
 	}
 	fprintf(stderr, "\npredownload(): SE_factor (SE refocuse sl. thick factor)  %f\n", SE_factor);
 
@@ -1028,6 +1028,7 @@ STATUS predownload( void )
 		epic_error(use_ermes,"failure to read in ASL prep 1 pulse", EM_PSD_SUPPORT_FAILURE, EE_ARGS(0));
 		return FAILURE;
 	}
+	prep1_Npoints = prep1_len;
 	
 	fprintf(stderr, "predownload(): calling readprep() to read in ASL prep 2 pulse\n");
 	if (readprep(prep2_id, &prep2_len,
@@ -1056,7 +1057,8 @@ STATUS predownload( void )
 	/* update sinc pulse parameters */
 	pw_rf0 = 3200;
 	pw_rf1 = 3200;
-	
+	pw_rf1ns = 1000;
+
 	/* adjust fat sup pw s.t. desired bandwidth is achieved */
 	pw_rffs = 3200; /* nominal SINC1 pulse width */
 	pw_rffs *= (int)round(NOM_BW_SINC1_90 / (float)fatsup_bw); /* adjust bandwidth */
@@ -1089,10 +1091,20 @@ STATUS predownload( void )
 		if (rf180_b1 > maxB1[L_SCAN]) maxB1[L_SCAN] = rf180_b1;
 	}
 
+	rf180ns_b1 = calc_hard_B1(pw_rf1ns, 180);
+	if (ro_type==1){
+		fprintf(stderr, "predownload(): maximum B1 for a 180 deg RECT pulse: %f\n", rf180ns_b1);
+		if (rf180ns_b1 > maxB1[L_SCAN]) maxB1[L_SCAN] = rf180ns_b1;
+	}
+
 	rf1_b1 = calc_sinc_B1(cyc_rf1, pw_rf1, opflip);
 	fprintf(stderr, "predownload(): maximum B1 for rf1 pulse: %f\n", rf1_b1);
 	if (rf1_b1 > maxB1[L_SCAN]) maxB1[L_SCAN] = rf1_b1;
-	
+
+	rf1ns_b1 = calc_hard_B1(pw_rf1ns, opflip);
+	fprintf(stderr, "predownload(): maximum B1 for rf1ns pulse: %f\n", rf1ns_b1);
+	if (rf1ns_b1 > maxB1[L_SCAN]) maxB1[L_SCAN] = rf1ns_b1;
+
 	rfps1_b1 = calc_hard_B1(pw_rfps1, 72.0); /* flip angle of 72 degrees */
 	fprintf(stderr, "predownload(): maximum B1 for presat pulse 1: %f Gauss \n", rfps1_b1);
 	if (rfps1_b1 > maxB1[L_SCAN]) maxB1[L_SCAN] = rfps1_b1;
@@ -1157,15 +1169,20 @@ STATUS predownload( void )
 		extraScale = 1.0;
 	}
 	
-	/* Update all the rf amplitudes */
+	/* Update all the rf amplitudes : convert RF amplitude from gauss to fraction of b1max*/
 	a_rf0 = rf0_b1 / maxB1Seq;
 	ia_rf0 = a_rf0 * MAX_PG_WAMP;
 
 	/* (this one is for the variable flip angle calculation) */
 	arf180 = rf180_b1 / maxB1Seq;	
+	arf180ns = rf180ns_b1 / maxB1Seq;	
 
 	a_rf1 = rf1_b1 / maxB1Seq;
 	ia_rf1 = a_rf1 * MAX_PG_WAMP;
+
+	a_rf1ns = rf1ns_b1 / maxB1Seq;
+	ia_rf1ns = a_rf1ns * MAX_PG_WAMP;
+
 
 	a_rfps1 = rfps1_b1 / maxB1Seq;
 	ia_rfps1 = a_rfps1 * MAX_PG_WAMP;
@@ -1197,6 +1214,11 @@ STATUS predownload( void )
 		fprintf(stderr, "predownload(): doVelspectrum=2 -> setting the first prep1_gmax to -4.0\n");
 		vspectrum_grad = -4.0;
 	}
+	if (doVelSpectrum==3){
+		fprintf(stderr, "predownload(): doVelspectrum=3 -> setting the first prep1_gmax to 0.0\n");
+		vspectrum_grad = 0.0;
+	}
+	
 	/* Update the asl prep pulse gradients */
 	a_prep1gradlbl = (prep1_id > 0) ? (prep1_gmax) : (0);
 	ia_prep1gradlbl = (int)ceil(a_prep1gradlbl / ZGRAD_max * (float)MAX_PG_WAMP);
@@ -1324,14 +1346,19 @@ STATUS predownload( void )
 	fprintf(stderr, "\npredownload(): calling calc_pcasl_phases() to make the linear phase sweep \n");
 	calc_pcasl_phases(pcasl_iphase_tbl, pcasl_delta_phs, MAXPCASLSEGMENTS);
 
-
-	/* velocity spectrum default venc gradient increments - so that it goes from -4.0 to +4.0 G/cm */
-	prep1_delta_gmax = 2.0*4.0 / ((float)nframes/(float)vspectrum_Navgs -1)  ;
+	if (doVelSpectrum==2){
+		/* velocity spectrum default venc gradient increments - so that it goes from -4.0 to +4.0 G/cm */
+		prep2_delta_gmax = 2.0*4.0 / ((float)nframes/(float)vspectrum_Navgs -1)  ;
+	}
+	if (doVelSpectrum==3){
+		/* velocity spectrum default venc gradient increments - so that it goes from 0.0 to +4.0 G/cm */
+		prep2_delta_gmax = 4.0 / ((float)nframes/(float)vspectrum_Navgs -1)  ;
+	}
 
 	/* -------------------------*/
 
 	/* read MRF schedule from file */
-	if (mrf_mode ) 
+	if (mrf_mode==1 && doVelSpectrum<1) 
 	{
 		if (read_mrf_fromfile(mrf_sched_id, mrf_deadtime, mrf_pcasl_type, mrf_pcasl_duration, mrf_pcasl_pld, mrf_prep1_type, mrf_prep1_pld, mrf_prep2_type, mrf_prep2_pld) ==0 )
 		{
@@ -1372,10 +1399,11 @@ STATUS predownload( void )
 	pw_rfps4cd = tmp_pwd;
 	a_rfps4c = tmp_a;
 
-	pw_gzrffsspoil = tmp_pw;
-	pw_gzrffsspoila = tmp_pwa;
+	/* fat sat spoiler*/
+	pw_gzrffsspoil = tmp_pw + 2000; /*Making sure that the transverse magnetization is spoiled and we don't get stimulated echoes from the prep pulse*/
+	pw_gzrffsspoila = tmp_pwa ;
 	pw_gzrffsspoild = tmp_pwd;
-	a_gzrffsspoil = tmp_a;
+	a_gzrffsspoil = tmp_a ;
 
 	pw_gzrf1trap1 = tmp_pw;
 	pw_gzrf1trap1a = tmp_pwa;
@@ -1388,6 +1416,18 @@ STATUS predownload( void )
 	pw_gzrf1trap2d = tmp_pwd;
 	a_gzrf1trap2 = tmp_a;
 	
+	/* Now for the rect non sel refocuser*/
+	pw_rf1trap1ns = tmp_pw;
+	pw_rf1trap1nsa = tmp_pwa;
+	pw_rf1trap1nsd = tmp_pwd;
+	a_rf1trap1ns = tmp_a;
+
+	/* set trap2 as a crusher (for FSE case) */
+	pw_rf1trap2ns = tmp_pw;
+	pw_rf1trap2nsa = tmp_pwa;
+	pw_rf1trap2nsd = tmp_pwd;
+	a_rf1trap2ns = tmp_a;
+	
 	/* calculate slice select refocuser gradient */
 	tmp_area = a_gzrf1 * (pw_gzrf1 + (pw_gzrf1a + pw_gzrf1d)/2.0);
 	amppwgrad(tmp_area, GMAX, 0, 0, ZGRAD_risetime, 0, &tmp_a, &tmp_pwa, &tmp_pw, &tmp_pwd); 	
@@ -1398,7 +1438,7 @@ STATUS predownload( void )
 	pw_gzrf0rd = tmp_pwd;
 	a_gzrf0r = tmp_a;
 	
-	if (ro_type > 1) { /* GRE modes - make trap2 a slice selct refocuser */
+	if (ro_type > 1) { /* GRE modes - make trap2 a slice select refocuser */
 		pw_gzrf1trap2 = tmp_pw;
 		pw_gzrf1trap2a = tmp_pwa;
 		pw_gzrf1trap2d = tmp_pwd;
@@ -1420,7 +1460,7 @@ STATUS predownload( void )
 	pw_gzw2 = tmp_pw;
 	pw_gzw2a = tmp_pwa;
 	pw_gzw2d = tmp_pwd;
-	a_gzw2 = tmp_a;
+	a_gzw2 = -tmp_a;
 
 	/* set parameters for flowcomp pre-phaser */
 	tmp_area = 2*M_PI/(GAMMA*1e-6) * kzmax; /* multiply by 2 if flow compensated */
@@ -1460,7 +1500,7 @@ STATUS predownload( void )
 		epic_error(use_ermes,"failure to generate view transformation matrices", EM_PSD_SUPPORT_FAILURE, EE_ARGS(0));
 		return FAILURE;
 	}
-	if (mrf_mode){
+	if (mrf_mode>0){
 
 		scalerotmats(tmtxtbl, &loggrd, &phygrd, opetl*opnshots*narms*nframes, 0);
 	}else{
@@ -1518,7 +1558,10 @@ STATUS predownload( void )
 		case 1: /* FSE */
 			
 			/* calculate minimum esp (time from rf1 to next rf1) */
-			minesp += pw_gzrf1/2 + pw_gzrf1d; /* 2nd half of rf1 pulse */
+			if (doNonSelRefocus)
+				minesp += pw_rf1ns/2;
+			else
+				minesp += pw_gzrf1/2 + pw_gzrf1d; /* 2nd half of rf1 pulse */
 			minesp += pgbuffertime;
 			minesp += pw_gzrf1trap2a + pw_gzrf1trap2 + pw_gzrf1trap2d; /* post-rf crusher */
 			minesp += pgbuffertime;
@@ -1534,7 +1577,10 @@ STATUS predownload( void )
 			minesp += pgbuffertime;
 			minesp += pw_gzrf1trap1a + pw_gzrf1trap1 + pw_gzrf1trap1d; /* pre-rf crusher */
 			minesp += pgbuffertime;
-			minesp += pw_gzrf1a + pw_gzrf1; /* 1st half of rf1 pulse */
+			if (doNonSelRefocus)
+				minesp += pw_rf1ns/2;
+			else
+				minesp += pw_gzrf1a + pw_gzrf1/2; /* 1st half of rf1 pulse */
 
 			/* calculate minimum TE (time from center of rf0 to center of readout pulse) */
 			minte += pw_gzrf0/2 + pw_gzrf0d; /* 2nd half of rf0 pulse */
@@ -1545,26 +1591,42 @@ STATUS predownload( void )
 			minte += pgbuffertime;	
 			minte += pw_gzrf1trap1a + pw_gzrf1trap1 + pw_gzrf1trap1d; /* pre-rf crusher */
 			minte += pgbuffertime;
-			minte += pw_gzrf1a + pw_gzrf1 + pw_gzrf1d; /* rf1 pulse */
+			if (doNonSelRefocus)
+				minte += pw_rf1ns; /* rf1 NS pulse */
+			else
+				minte += pw_gzrf1a + pw_gzrf1 + pw_gzrf1d; /* rf1 pulse */
 			minte += pgbuffertime;	
 			minte += pw_gzrf1trap2a + pw_gzrf1trap2 + pw_gzrf1trap2d; /* post-rf crusher */
 			minte += pgbuffertime;
 			minte += TIMESSI; /* inter-core time */
 			minte += pgbuffertime;
 			minte += (flowcomp_flag == 1 && spi_mode == 0)*(pw_gzfca + pw_gzfc + pw_gzfcd + pgbuffertime); /* flow comp pre-phaser */
-			minte += (spi_mode == 0) * (pw_gzw1a + pw_gzw1 + pw_gzw1d + pgbuffertime); /* z rewind gradient */
+			minte += (spi_mode == 0) * (pw_gzw1a + pw_gzw1 + pw_gzw1d + pgbuffertime); /* SOS z encode gradient */
 			minte += pw_gxw/2; /* first half of spiral readout */
 
 			/* calculate deadtimes */
 			deadtime1_seqcore = (opte - minesp)/2;
 			deadtime1_seqcore -= (flowcomp_flag == 1 && spi_mode == 0)*(pw_gzfca + pw_gzfc + pw_gzfcd + pgbuffertime); /* adjust for flowcomp symmetry */
-			minte += deadtime1_seqcore;
-			deadtime2_seqcore = (opte - minesp)/2;
-			deadtime2_seqcore += (flowcomp_flag == 1 && spi_mode == 0)*(pw_gzfca + pw_gzfc + pw_gzfcd + pgbuffertime);		
-			deadtime_rf0core = opte - minte;
 
+			deadtime2_seqcore = (opte - minesp)/2; 
+			deadtime2_seqcore += (flowcomp_flag == 1 && spi_mode == 0)*(pw_gzfca + pw_gzfc + pw_gzfcd + pgbuffertime);		
+
+			minte += deadtime1_seqcore; 
+			deadtime_rf0core = opte - minte;
+/*			
+			deadtime_rf0core = opte/2 - (pw_gzrf0/2 + pw_gzrf0d);
+			deadtime_rf0core -= pgbuffertime;
+			deadtime_rf0core -= (pw_gzrf0ra + pw_gzrf0r + pw_gzrf0rd) ;
+			deadtime_rf0core -= pgbuffertime;
+			deadtime_rf0core -= TIMESSI;
+			deadtime_rf0core -= pgbuffertime;
+			deadtime_rf0core -= (pw_gzrf1trap1a + pw_gzrf1trap1 + pw_gzrf1trap1d);
+			deadtime_rf0core -= pgbuffertime;
+			deadtime_rf0core -= (pw_gzrf1/2 + pw_gzrf0d);
+*/
 			minte = (int)fmax(minte, minesp);
 			minesp = 0; /* no restriction on esp cv - let opte control the echo spacing */
+			fprintf(stderr, "\n -- calculated minTE and minESP: %d and  %d\n", minte , minesp);
 	
 			break;
 
@@ -1750,16 +1812,24 @@ STATUS predownload( void )
 	dur_rf1core += pw_gzrf1trap2a + pw_gzrf1trap2 + pw_gzrf1trap2d;
 	dur_rf1core += pgbuffertime; 
 
+	/* calculate duration of nonselective rect refocuser rf1nscore */
+	dur_rf1nscore = 0;
+	dur_rf1nscore += pgbuffertime;
+	dur_rf1nscore += pw_rf1trap1nsa + pw_rf1trap1ns + pw_rf1trap1nsd;
+	dur_rf1nscore += pgbuffertime;
+	dur_rf1nscore += pw_rf1ns;
+	dur_rf1nscore += pgbuffertime;
+	dur_rf1nscore += pw_rf1trap2nsa + pw_rf1trap2ns + pw_rf1trap2nsd;
+	dur_rf1nscore += pgbuffertime; 
+
 	/* calculate duration of seqcore */
 	dur_seqcore = 0;
 	dur_seqcore += deadtime1_seqcore + pgbuffertime;
 	dur_seqcore += (flowcomp_flag == 1 && spi_mode == 0)*(pw_gzfca + pw_gzfc + pw_gzfcd + pgbuffertime);
-	dur_seqcore += (spi_mode == 0) * (pw_gzw1a + pw_gzw1 + pw_gzw1d + pgbuffertime); /* z rewind gradient */
+	dur_seqcore += (spi_mode == 0) * (pw_gzw1a + pw_gzw1 + pw_gzw1d + pgbuffertime); /* SOS z encode gradient */
 	dur_seqcore += pw_gxw;
-	dur_seqcore += pgbuffertime;
-	dur_seqcore += pw_gzw2a + pw_gzw2 + pw_gzw2d;
-	dur_seqcore += pgbuffertime;
-	dur_seqcore += deadtime2_seqcore;
+	dur_seqcore += (spi_mode == 0) * (pw_gzw2a + pw_gzw2 + pw_gzw2d + pgbuffertime);  /* SOS - z rewinder*/
+	dur_seqcore += deadtime2_seqcore + pgbuffertime;
 
 	/* calculate minimum TR */
 	absmintr = presat_flag*(dur_presatcore + TIMESSI + presat_delay + TIMESSI);
@@ -1768,9 +1838,16 @@ STATUS predownload( void )
 	absmintr += (prep1_id > 0)*(dur_prep1core + TIMESSI + prep1_pld + TIMESSI);
 	absmintr += (prep2_id > 0)*(dur_prep2core + TIMESSI + prep2_pld + TIMESSI);
 	absmintr += (fatsup_mode > 0)*(dur_fatsupcore + TIMESSI);
+
 	if (ro_type == 1) /* FSE - add the rf0 pulse */
 		absmintr += dur_rf0core + TIMESSI;
-	absmintr += (opetl + ndisdaqechoes) * (dur_rf1core + TIMESSI + dur_seqcore + TIMESSI);
+
+	if(doNonSelRefocus) /* happens only in FSE mode */
+		absmintr += (opetl + ndisdaqechoes) * (dur_rf1nscore + TIMESSI + dur_seqcore + TIMESSI);
+	else
+		absmintr += (opetl + ndisdaqechoes) * (dur_rf1core + TIMESSI + dur_seqcore + TIMESSI);
+	
+
 	if (exist(opautotr) == PSD_MINIMUMTR)
 		optr = absmintr;	
 	cvmin(optr, absmintr);
@@ -1779,11 +1856,17 @@ STATUS predownload( void )
 	tr_deadtime = optr - absmintr;
 
 	/* troubleshooting */
-	fprintf(stderr, "\npredownload(): DEBUG: total deadtime for disdaqs: %d ",
+	if(doNonSelRefocus)
+		fprintf(stderr, "\npredownload(): DEBUG: total deadtime for disdaqs: %d ",
 		(optr - opetl * (dur_rf1core + TIMESSI + dur_seqcore + TIMESSI)));
+	else
+		fprintf(stderr, "\npredownload(): DEBUG: total deadtime for disdaqs: %d ",
+		(optr - opetl * (dur_rf1nscore + TIMESSI + dur_seqcore + TIMESSI)));
+	
 	fprintf(stderr, "\n--optr %d " , optr);
 	fprintf(stderr, "\n--opetl %d " , opetl);
 	fprintf(stderr, "\n--dur_rf1core %d " , dur_rf1core);
+	fprintf(stderr, "\n--dur_rf1nscore %d " , dur_rf1core);
 	fprintf(stderr, "\n--dur_seqcore %d " , dur_seqcore);
 	fprintf(stderr, "\n--TIMESSI %d " , TIMESSI);
 		
@@ -2268,7 +2351,7 @@ STATUS pulsegen( void )
 	/*************************/
 	/* generate rf0 core */
 	/*************************/
-	fprintf(stderr, "pulsegen(): beginning pulse generation of rf0 core\n");
+	fprintf(stderr, "pulsegen():  beginning pulse generation of rf0 core\n");
 	tmploc = 0;
 
 	fprintf(stderr, "pulsegen(): generating rf0 (rf0 pulse)...\n");
@@ -2316,12 +2399,15 @@ STATUS pulsegen( void )
 	tmploc += pw_gzrf1a + pw_gzrf1 + pw_gzrf1d; /* end time for rf2 pulse */
 	fprintf(stderr, " end: %dus\n", tmploc);
 
-	fprintf(stderr, "pulsegen(): generating gzrf1trap2 (post-rf1 gradient trapezoid)...\n");
-	tmploc += pgbuffertime; /* start time for gzrf1trap2 */
-	TRAPEZOID(ZGRAD, gzrf1trap2, tmploc + pw_gzrf1trap2a, 3200, 0, loggrd);
-	fprintf(stderr, "\tstart: %dus, ", tmploc);
-	tmploc += pw_gzrf1trap2a + pw_gzrf1trap2 + pw_gzrf1trap2d; /* end time for gzrf1trap2 pulse */
-	fprintf(stderr, " end: %dus\n", tmploc);
+	if (ro_type != 3) { /* bSSFP - do not use trap2 */
+		fprintf(stderr, "pulsegen(): generating gzrf1trap2 (post-rf1 gradient trapezoid)...\n");
+		tmploc += pgbuffertime; /* start time for gzrf1trap2 */
+		TRAPEZOID(ZGRAD, gzrf1trap2, tmploc + pw_gzrf1trap2a, 3200, 0, loggrd);
+		fprintf(stderr, "\tstart: %dus, ", tmploc);
+		tmploc += pw_gzrf1trap2a + pw_gzrf1trap2 + pw_gzrf1trap2d; /* end time for gzrf1trap2 pulse */
+		fprintf(stderr, " end: %dus\n", tmploc);
+	}
+	
 	tmploc += pgbuffertime;
 
 	fprintf(stderr, "pulsegen(): finalizing rf1 core...\n");
@@ -2329,6 +2415,44 @@ STATUS pulsegen( void )
 	SEQLENGTH(rf1core, dur_rf1core, rf1core);
 	fprintf(stderr, "\tDone.\n");
 
+	
+	/*************************/
+	/* generate rf1ns core (non-selective rect RF pulse refocuser)*/
+	/*************************/
+	fprintf(stderr, "pulsegen(): beginning pulse generation of rf1ns core\n");
+	tmploc = 0;
+
+	if (ro_type != 3) { /* bSSFP - do not use trap1 */
+		fprintf(stderr, "pulsegen(): generating rf1trap1ns (pre-rf1 gradient trapezoid)...\n");
+		tmploc += pgbuffertime; /* start time for rf1trap1ns */
+		TRAPEZOID(ZGRAD, rf1trap1ns, tmploc + pw_rf1trap1nsa, 3200, 0, loggrd);
+		fprintf(stderr, "\tstart: %dus, ", tmploc);
+		tmploc += pw_rf1trap1nsa + pw_rf1trap1ns + pw_rf1trap1nsd; /* end time for rf1trap1ns */
+		fprintf(stderr, " end: %dus\n", tmploc);
+	}
+
+	fprintf(stderr, "pulsegen(): generating RECT rf1 (rf1ns pulse)...\n");
+	tmploc += pgbuffertime; /* start time for rf1ns */
+	CONST(RHO, rf1ns, tmploc + psd_rf_wait, 1000, opflip, loggrd);
+	fprintf(stderr, "\tstart: %dus, ", tmploc);
+	tmploc += pw_rf1ns ; /* end time for rf1ns pulse */
+	fprintf(stderr, " end: %dus\n", tmploc);
+
+	if (ro_type != 3) { /* bSSFP - do not use trap2 */
+		fprintf(stderr, "pulsegen(): generating gzrf1trap2 (post-rf1 gradient trapezoid)...\n");
+		tmploc += pgbuffertime; /* start time for rf1trap2ns */
+		TRAPEZOID(ZGRAD, rf1trap2ns, tmploc + pw_rf1trap2nsa, 3200, 0, loggrd);
+		fprintf(stderr, "\tstart: %dus, ", tmploc);
+		tmploc += pw_rf1trap2nsa + pw_rf1trap2ns + pw_rf1trap2nsd; /* end time for gzrf1trap2 pulse */
+		fprintf(stderr, " end: %dus\n", tmploc);
+	}
+	
+	tmploc += pgbuffertime;
+
+	fprintf(stderr, "pulsegen(): finalizing rf1ns core...\n");
+	fprintf(stderr, "\ttotal time: %dus (tmploc = %dus)\n", dur_rf1nscore, tmploc);
+	SEQLENGTH(rf1nscore, dur_rf1nscore, rf1nscore);
+	fprintf(stderr, "\tDone.\n");
 
 	/**********************************/
 	/* generate deadtime (empty) core */
@@ -2671,7 +2795,9 @@ int play_pcasl(int type,  int tbgs1, int tbgs2, int pld) {
 
 		/* fprintf(stderr, "\tplay_pcasl(): pulse phase %f (rads)...\n", tmpPHI );*/
 		/* set the phase of the blips incrementing phase each time - previously calculated*/
+		
 		setiphase(pcasl_iphase_tbl[i], &rfpcasl,0);
+		/*setiphase(-pcasl_iphase_tbl[i], &rfpcasl,0);*/
 		 
 		/*
 	    tmpPHI = atan2 (sin(tmpPHI), cos(tmpPHI));     
@@ -2747,7 +2873,7 @@ int play_pcasl(int type,  int tbgs1, int tbgs2, int pld) {
 }
 
 /* LHG 12/6/12 : compute the linear phase increment of the PCASL pulses - NOT USED currently*/
-int calc_pcasl_phases(int *iphase_tbl, float  myphase_increment, int nreps)
+int update_pcasl_phases(int *iphase_tbl, float  myphase_increment, int nreps)
 {
 	int     n;
 	double  rfphase; 
@@ -2794,6 +2920,7 @@ int determine_label_type(int mode, int framen)
 /* function for playing fat sup pulse */
 int play_fatsup() {
 	int ttotal = 0;
+
 	fprintf(stderr, "\tplay_fatsup(): playing fat sup pulse (%d us)...\n", dur_fatsupcore + TIMESSI);
 
 	/* Play fatsup core */
@@ -2837,6 +2964,24 @@ int play_rf1(float phs) {
 	startseq(0, MAY_PAUSE);
 	settrigger(TRIG_INTERN, 0);
 	ttotal += dur_rf1core + TIMESSI;
+
+	return ttotal;	
+}
+
+/* function for playing FSE rf1 refocuser pulse
+this refocuser is a non-selective rect function */
+int play_rf1ns(float phs) {
+	int ttotal = 0;
+
+	/* set rx and tx phase */
+	setphase(phs, &rf1ns, 0);
+
+	/* Play the rf1 */
+	fprintf(stderr, "\tplay_rf1ns(): playing rf1nscore (%d us)...\n", dur_rf1nscore);
+	boffset(off_rf1nscore);
+	startseq(0, MAY_PAUSE);
+	settrigger(TRIG_INTERN, 0);
+	ttotal += dur_rf1nscore + TIMESSI;
 
 	return ttotal;	
 }
@@ -2942,6 +3087,8 @@ ill target different velocities on different frames of the time series */
 STATUS prescanCore() {
 
 	int ttotal; 
+	float arf1_var = 0.0;
+	//float tmpmax= 1.0;
 
 	/* initialize the rotation matrix */
 	setrotate( tmtx0, 0 );
@@ -2982,7 +3129,7 @@ STATUS prescanCore() {
 		}
 
 
-		if (ro_type == 1) { /* FSE - play 90 */
+		if (ro_type == 1) { /* FSE - play 90 deg. pulse with 0 phase */
 			fprintf(stderr, "prescanCore(): playing 90deg FSE tipdown for prescan iteration %d...\n", view);
 			ttotal += play_rf0(0);
 		}	
@@ -3013,9 +3160,87 @@ STATUS prescanCore() {
 				fprintf(stderr, "prescanCore(): loaddab(&echo1, 0, 0, 0, %d, DABOFF, PSD_LOAD_DAB_ALL)...\n", view);
 				loaddab(&echo1, 0, 0, DABSTORE, view, DABON, PSD_LOAD_DAB_ALL);
 			}
+		
+			if (ro_type == 1){ 
+				/* FSE - CPMG */
+				/* For FSE case, include variable flip angle refocusers
+				The default is to use a constant refocuser flip angle*/
+				
+				arf1_var = a_rf1;
 			
+				if (echon==0){
+					/*using a "stabilizer" for the first of the echoes in the train
+						flip[0] = 90 + (vflip)/2         
+					the rest of them are whatever the refocuser flip angle is: 
+						flip[n] = vflip            
+					eg1: opflip = 120
+					-->	90x - 150y - 120y - 120y -120y ...
+					eg2: opflip = 180
+					-->	90x - 180y - 180y - 180y -180y ...  */
+
+					if(doNonSelRefocus)
+						arf1_var = (arf180ns + a_rf1ns)/2;
+					else
+						arf1_var = (arf180 + a_rf1)/2;
+				}
+				if(varflip) {
+					/* variable flip angle refocuser pulses to get more signal 
+					- linearly increasing schedule */
+					/* arf1_var = a_rf1 + (float)echon*(arf180 - a_rf1)/(float)(opetl-1); */
+					
+					/* in VFA, the first refocusers are higher - trying to approximate that here*/
+					/* if(echon==0) arf1_var = (arf180 + a_rf1)/2.0;  */
+						    
+					/* New approach: do a quadrative schedule with 
+					the minimum of parabola occurring at one quarter of the way in the echo train 
+					Note - the min value will be a_rf1ns (or opflip) */
+	    			//arf1_var = ((float)(echon) - (float)(opetl)/4.0) * ((float)(echon) - (float)(opetl)/4.0);  /* shifted parabola */
+					//tmpmax = ((float)(opetl) - (float)(opetl)/4.0) *  ((float)(opetl) - (float)(opetl)/4.0) ;    /* max value of the parabola */
+
+					/* New: flip angle schedule is fourth order polynomial based on data by Zhao 1997 , DOI: 10.1002/mrm.27118
+					flip angles in degrees: */
+   					arf1_var = 0.0044*pow(echon+1,4)   - 0.2521*pow(echon+1,3) +   5.3544 *pow(echon+1,2) - 45.0296*(echon+1) + 158.0661;
+					/* cap the RF amplitude at 150 degree pulse */
+					if (arf1_var > 150) arf1_var = 150;;
+
+					if(doNonSelRefocus)
+					{
+						// scale to relative scale of rho channel [0,1]
+						arf1_var *= arf180ns / 180.0;
+					
+						//arf1_var *= (arf180ns - a_rf1ns) / tmpmax; /* scale to the range from min to 180 */
+						//arf1_var += a_rf1ns;  /* shift up */
+
+					}
+					else
+					{
+						// scale to relative scale of rho channel [0,1]
+						arf1_var *= arf180 / 180.0;
+					
+						//arf1_var *= (arf180 - a_rf1) / tmpmax; /* scale */
+						//arf1_var += a_rf1;  /* shift up */
+
+					}
+					
+					/* set the transmitter gain after the adjustments */
+					if(doNonSelRefocus)
+					{
+						setiamp(arf1_var * MAX_PG_WAMP, &rf1ns,0);
+						fprintf(stderr,"\nadjusting var flip ang: %f (arf180=%f)", arf1_var, arf180 ); 
+					}
+					else
+					{
+						setiamp(arf1_var * MAX_PG_WAMP, &rf1,0);
+						fprintf(stderr,"\nadjusting var flip ang: %f (arf180=%f)", arf1_var, arf180 ); 
+					}
+				}
+			}
+		
 			fprintf(stderr, "prescanCore(): Playing flip pulse for prescan iteration %d...\n", view);
-			ttotal += play_rf1(90*(ro_type == 1));
+			if (doNonSelRefocus)
+				ttotal += play_rf1ns(90*(ro_type == 1));
+			else
+				ttotal += play_rf1(90*(ro_type == 1));
 
 			/* set rotation matrix for each echo readout */
 			setrotate( tmtxtbl[echon], 0 );
@@ -3095,6 +3320,7 @@ STATUS scan( void )
 	int pcasl_type, prep1_type, prep2_type;
 
 	float arf1_var = 0;
+	//float tmpmax = 1.0;
 
 	fprintf(stderr, "scan(): beginning scan (t = %d / %.0f us)...\n", ttotal, pitscan);
 
@@ -3143,9 +3369,12 @@ STATUS scan( void )
 		
 		/* Calculate and play deadtime */
 		fprintf(stderr, "scan(): playing TR deadtime for disdaq train %d (t = %d / %.0f us)...\n", disdaqn, ttotal, pitscan);
-		ttotal += play_deadtime(optr - opetl * (dur_rf1core + TIMESSI + dur_seqcore + TIMESSI));
+		if (doNonSelRefocus)
+			ttotal += play_deadtime(optr - opetl * (dur_rf1nscore + TIMESSI + dur_seqcore + TIMESSI));
+		else
+			ttotal += play_deadtime(optr - opetl * (dur_rf1core + TIMESSI + dur_seqcore + TIMESSI));
 		
-		if (ro_type == 1) { /* FSE - play 90 */
+		if (ro_type == 1) { /* FSE - play 90 deg. with 0 phase*/
 			fprintf(stderr, "scan(): playing 90deg FSE tipdown for disdaq train %d (t = %d / %.0f us)...\n", disdaqn, ttotal, pitscan);
 			play_rf0(0);
 		}	
@@ -3154,10 +3383,14 @@ STATUS scan( void )
 		for (echon = 0; echon < opetl+ndisdaqechoes; echon++) {
 			fprintf(stderr, "scan(): playing flip pulse for disdaq train %d (t = %d / %.0f us)...\n", disdaqn, ttotal, pitscan);
 			if (ro_type == 1) {/* FSE - CPMG */
-				ttotal += play_rf1(90 );
+				if (doNonSelRefocus)
+					ttotal += play_rf1ns(90 );
+				else
+					ttotal += play_rf1(90 );
 				}
 			else
-				ttotal += play_rf1(0);
+				//ttotal += play_rf1(0);
+				ttotal += play_rf1(rfspoil_flag*117*(echon + ndisdaqechoes));
 
 			/* Load the DAB */		
 			fprintf(stderr, "scan(): loaddab(&echo1, %d, 0, DABSTORE, 0, DABOFF, PSD_LOAD_DAB_ALL)...\n", echon+1);
@@ -3217,19 +3450,19 @@ STATUS scan( void )
 			vspectrum_rep++ ;
 		}
 
-		/* Method 2: If using BIR8 pulses - sweep through the venc gradients*/
-		if (doVelSpectrum==2 && framen >= nm0frames){
+		/* Method 2: If using BIR8 pulses - sweep through the venc gradients (options 2 and 3)*/
+		if (doVelSpectrum>=2 && framen >= nm0frames){
 			fprintf(stderr, "\nscan():Encoding velocity spectrum Avgs. counter: %d \n", vspectrum_rep); 
 			if (vspectrum_rep == vspectrum_Navgs)
 			{
-				fprintf(stderr, "\n\nscan() velocity spectrum: updating for prep1 pulse for vel %f \n\n", vel_target);
+				fprintf(stderr, "\n\nscan() velocity spectrum: updating for prep2 pulse for vel %f \n\n", vel_target);
 				vspectrum_rep = 0;
-				vspectrum_grad += prep1_delta_gmax;
+				vspectrum_grad += prep2_delta_gmax;
 			}	
-			ia_prep1gradlbl = (int)ceil(vspectrum_grad / ZGRAD_max * (float)MAX_PG_WAMP);
-			ia_prep1gradctl = (int)ceil(vspectrum_grad / ZGRAD_max * (float)MAX_PG_WAMP);
-			setiamp(ia_prep1gradctl, &prep1gradctl, 0);
-			setiamp(ia_prep1gradlbl, &prep1gradlbl, 0);
+			ia_prep2gradlbl = (int)ceil(vspectrum_grad / ZGRAD_max * (float)MAX_PG_WAMP);
+			ia_prep2gradctl = (int)ceil(vspectrum_grad / ZGRAD_max * (float)MAX_PG_WAMP);
+			setiamp(ia_prep2gradctl, &prep2gradctl, 0);
+			setiamp(ia_prep2gradlbl, &prep2gradlbl, 0);
 			vspectrum_rep++ ;
 
 		}
@@ -3249,7 +3482,7 @@ STATUS scan( void )
 			if (pcasl_calib_cnt == pcasl_calib_frames ){
 				fprintf(stderr, "\n\n scan() CALIBRATION: updating PCASL linear phase increment: %f (rads) and phase table\n\n", pcasl_delta_phs);
 				pcasl_delta_phs += phs_cal_step;				
-				calc_pcasl_phases(pcasl_iphase_tbl, pcasl_delta_phs, MAXPCASLSEGMENTS);
+				update_pcasl_phases(pcasl_iphase_tbl, pcasl_delta_phs, MAXPCASLSEGMENTS);
 				pcasl_calib_cnt = 0;
 			}
 			pcasl_calib_cnt++;
@@ -3260,7 +3493,7 @@ STATUS scan( void )
 		MRF case:use the values in the mrf tables for the acquisition.  
 		We update the values in every frame
 		*/
-		if (mrf_mode){
+		if (mrf_mode == 1 && doVelSpectrum<1){
 			fprintf(stderr, "\n\n scan(): MRF MODE : updating schedule from mrf tables\n");
 			
 			presat_flag = 0;
@@ -3273,6 +3506,9 @@ STATUS scan( void )
 			pcasl_duration 		= pcasl_period * pcasl_Npulses; 	
 			pcasl_pld		= 4*(int)(mrf_pcasl_pld[framen] * 1e6 / 4);
 
+			pcasl_tbgs1 		= 0;
+			pcasl_tbgs2 		= 0;
+			
 			prep1_type		= mrf_prep1_type[framen];
 			prep1_pld		= 4*(int)(mrf_prep1_pld[framen]* 1e6 / 4); 
 
@@ -3334,6 +3570,12 @@ STATUS scan( void )
 
 				fprintf(stderr, "scan(): ************* beginning loop for frame %d, shot %d, arm %d *************\n", framen, shotn, armn);
 
+				/* Cardiac gating option - prior to presaturation pulse */
+				if (do_cardiac_gating) {
+                	settrigger(TRIG_ECG, 0);
+                	fprintf(stderr, "scan(): Setting ECG Trigger\n");
+				}
+
 				/* play the ASL pre-saturation pulse to reset magnetization */
 				if (presat_flag) {
 					fprintf(stderr, "scan(): playing asl pre-saturation pulse for frame %d, arm %d, shot %d (t = %d / %.0f us)...\n", framen, armn, shotn, ttotal, pitscan);
@@ -3372,7 +3614,10 @@ STATUS scan( void )
 				for (echon = 0; echon < ndisdaqechoes; echon++) {
 					fprintf(stderr, "scan(): playing flip pulse for frame %d, shot %d, disdaq echo %d (t = %d / %.0f us)...\n", framen, shotn, echon, ttotal, pitscan);
 					if (ro_type == 1) {/* FSE - CPMG */
-						ttotal += play_rf1(90 );
+						if (doNonSelRefocus)
+							ttotal += play_rf1ns(90 );
+						else
+							ttotal += play_rf1(90 );
 					}
 					else
 						ttotal += play_rf1(rfspoil_flag*117*echon);
@@ -3390,11 +3635,6 @@ STATUS scan( void )
 						/* The default is to use a constant refocuser flip angle*/
 						arf1_var = a_rf1;
 
-						if(varflip) {
-							/* variable flip angle refocuser pulses to get more signal 
-							- linearly increasing schedule */
-							arf1_var = a_rf1 + (float)echon*(arf180-a_rf1)/(float)(opetl-1); 
-						}
 						if (echon==0){
 							/*using a "stabilizer" for the first of the echoes in the train
 								flip[0] = 90 + (vflip)/2         
@@ -3405,16 +3645,71 @@ STATUS scan( void )
 							eg2: 
 								90x - 180y - 180y - 180y -180y ...  */
 
-							arf1_var = a_rf0 + a_rf1/2;
+							arf1_var = (arf180 + a_rf1)/2;
+							
+							if(doNonSelRefocus)
+								arf1_var = (arf180ns + a_rf1ns)/2;
 						}
-					
-						/* set the transmitter gain after the adjustments */
-						setiamp(arf1_var * MAX_PG_WAMP, &rf1,0);
-						fprintf(stderr,"\nadjusting var flip ang: %f (arf180=%f)", arf1_var, arf180 ); 
-					
-						ttotal += play_rf1(90);
+
+						if(varflip ) {
+							/* variable flip angle refocuser pulses to get more signal 
+							   - linearly increasing schedule */
+							/* arf1_var = a_rf1 + (float)echon*(arf180 - a_rf1)/(float)(opetl-1); */
+
+							/* in VFA, the first refocusers are higher - trying to approximate that here*/
+							/* if(echon==0) arf1_var = (arf180 + a_rf1)/2.0;  */
+
+							/* New approach: do a quadratic schedule with 
+							   the minimum of parabola is opflip and will occur at one quarter of the way in the echo train  
+							   y = (x-xmax/4)^2 */
+							//arf1_var = ((float)(echon) - (float)(opetl)/4.0) * ((float)(echon) - (float)(opetl)/4.0);  /* shifted parabola */
+							//tmpmax = ((float)(opetl) - (float)(opetl)/4.0) *  ((float)(opetl) - (float)(opetl)/4.0) ;    /* max value of the parabola */
+							
+							/* New: flip angle schedule is fourth order polynomial based on data by Zhao 1997 , DOI: 10.1002/mrm.27118
+							flip angles in degrees: */
+   							arf1_var = 0.0044*pow(echon+1,4)   - 0.2521*pow(echon+1,3) +   5.3544 *pow(echon+1,2) - 45.0296*(echon+1) + 158.0661;
+
+							if(doNonSelRefocus)
+							{
+								// scale to relative scale of rho channel [0,1]
+								arf1_var *= a_rf1ns / 180.0;
+
+								//arf1_var *= (arf180ns - a_rf1ns) / tmpmax; /* scale */
+								//arf1_var += a_rf1ns;  /* shift up */
+
+
+								/* but we cap it at 150 degree pulse */
+								if (arf1_var > arf180ns * 0.833 ) arf1_var = arf180ns * 0.833;;
+
+								/* set the transmitter gain after the adjustments */
+								setiamp(arf1_var * MAX_PG_WAMP, &rf1ns,0);
+								fprintf(stderr,"\nadjusting var flip ang: %f (arf180=%f)", arf1_var, arf180 ); 
+							}
+							else
+							{
+								// scale to relative scale of rho channel [0,1]
+								arf1_var *= a_rf1 / 180.0;
+
+								//arf1_var *= (arf180 - a_rf1) / tmpmax; /* scale */
+								//arf1_var += a_rf1;  /* shift up */
+
+								/* but we cap it at 150 degree pulse */
+								if (arf1_var > arf180 * 0.833) arf1_var = arf180 * 0.833;;
+
+								/* set the transmitter gain after the adjustments */
+								setiamp(arf1_var * MAX_PG_WAMP, &rf1,0);
+								fprintf(stderr,"\nadjusting var flip ang: %f (arf180=%f)", arf1_var, arf180 ); 
+							}
+
+						}
+
+						if (doNonSelRefocus)
+							ttotal += play_rf1ns(90 * (ro_type == 1) );
+						else
+							ttotal += play_rf1(90 * (ro_type == 1));
 					}
-					else {
+					else  /* SPGR and SSFP cases */
+					{
 						ttotal += play_rf1(rfspoil_flag*117*(echon + ndisdaqechoes));
 						setphase(rfspoil_flag*117*(echon + ndisdaqechoes), &echo1, 0);
 					}
@@ -3434,7 +3729,7 @@ STATUS scan( void )
 
 					/* Set the view transformation matrix */
 					rotidx = armn*opnshots*opetl + shotn*opetl + echon;
-					if (mrf_mode==1){
+					if (mrf_mode>0){
 						rotidx += framen*narms*opnshots*opetl;
 					}
 
@@ -3747,7 +4042,7 @@ int genviews() {
 
 	fprintf(stderr, "genviews...():\n");
 
-	if(mrf_mode) mrf_nframes=nframes;
+	if(mrf_mode > 0) mrf_nframes=nframes;
 
 	if (spi_mode>=3){
 		/* external file with rotations*/
@@ -3790,18 +4085,21 @@ int genviews() {
 
 					/* calculate view index */
 					rotidx = armn*opnshots*opetl + shotn*opetl + echon;
-					if(mrf_mode==1){
+					if(mrf_mode >0){
 						rotidx += narms*opnshots*opetl*nfr;
 					}
 
 					/* Set the z-axis rotation angles and kz step (as a fraction of kzmax) */ 
-					rz = M_PI * (float)armn / (float)narms;
-					if (ro_type == 2) /* spiral out */
-						rz *= 2;	
+					rz = 2* M_PI * (float)armn / (float)narms;
 					phi = 0.0;
 					theta = 0.0;
 					dz = 0.0;
 
+					/* the spiral in-out case rotates by only 90 degreesq  -
+					This happens in FSE and SSFP readouts*/
+					if (ro_type != 2) 
+						rz /= 2;
+					
 					switch (spi_mode) {
 						case 0: /* SOS */
 							phi = 0.0;
@@ -3811,13 +4109,23 @@ int genviews() {
 						case 1: /* 2D TGA */
 							phi = 0.0;
 							theta = 2* M_PI /phi2D * (shotn*opetl + echon);
+							
+							/* test: use the arms, instead of the shots to advance the angle*/
+							theta = 2* M_PI /phi2D * (armn*opetl + echon);
+							
 							dz = 0.0;
 							break;
 						case 2: /* 3D TGA */
+
 							/* using the fiboancci sphere formulas */
 							theta = (float)(shotn*opetl + echon)*2*M_PI / phi2D; /* polar angle */
 							phi = acos(1 - 2*(float)(shotn*opetl + echon)/(float)(opnshots*opetl)); /* azimuthal angle */
-							if (mrf_mode==1){
+							
+							/* test: use the arms, instead of the shots to advance the angle*/
+							theta = (float)(armn*opetl + echon)*2*M_PI / phi2D; /* polar angle */
+							phi = acos(1 - 2*(float)(armn*opetl + echon)/(float)(narms*opetl)); /* azimuthal angle */
+							
+							if (mrf_mode>0){
 								theta += prev_theta;
 								phi += prev_phi;
 							}
@@ -3868,7 +4176,7 @@ int genviews() {
 		}
 		/* in MRF mode -  we use different rotations in each frame.
 		Increment the first of the rotations by the last rotation in the previous frame */
-		if (mrf_mode) {
+		if (mrf_mode >0) {
 			/* prev_theta = (float)(opnshots*opetl*narms*(nfr + 1))*phi3D_1 *2*M_PI / phi2D;  */
 			/* prev_phi = acos(1 - 2*(float)(opnshots*opetl*narms*(nfr + 1))/(float)(opnshots*opetl));  */
 			prev_theta = theta;
@@ -3903,6 +4211,8 @@ int readprep(int id, int *len,
 			rho_ctl[i] = 0;
 			theta_ctl[i] = 0;
 			grad_ctl[i] = 0;
+			
+			*len = 1;
 		}
 		return 1;
 	}
@@ -4118,7 +4428,8 @@ int calc_pcasl_phases(int *iphase_tbl, float  myphase_increment, int nreps)
 	for (n=0; n<nreps; n++)
 	{
 		rfphase += myphase_increment;
-		rfphase = atan2 (sin(rfphase), cos(rfphase));      /* wrap phase to (-pi,pi) range */
+		/* wrap phase to (-pi,pi) range */
+		rfphase = atan2 (sin(rfphase), cos(rfphase));
 		/* translate to DAC units */
 		iphase_tbl[n] = (int)(rfphase/M_PI * (float)FS_PI);
 	}
@@ -4175,6 +4486,8 @@ int write_scan_info() {
 			fprintf(finfo, "\t%-50s%20s\n", "Readout type:", "FSE");
 			fprintf(finfo, "\t%-50s%20f %s\n", "Flip (inversion) angle:", opflip, "deg");
 			fprintf(finfo, "\t%-50s%20f %s\n", "Echo time:", (float)opte*1e-3, "ms");
+			fprintf(finfo, "\t%-50s%20d \n", "variable FA flag:", varflip );
+			fprintf(finfo, "\t%-50s%20d \n", "Non-selective rect pulse refocuser ", doNonSelRefocus );		
 			break;
 		case 2: /* SPGR */
 			fprintf(finfo, "\t%-50s%20s\n", "Readout type:", "SPGR");
@@ -4225,6 +4538,14 @@ int write_scan_info() {
 		fprintf(finfo, "\t%-50s%20d\n", "Number of navigator points:", nnav);
 	}
 	fprintf(finfo, "\t%-50s%20f %s\n", "Acquisition window duration:", acq_len*GRAD_UPDATE_TIME*1e-3, "ms");
+
+	if (mrf_mode > 0){
+		fprintf(finfo, "\nMRF MODE : %d . \n\tK-space trajectory is rotated from frame to frame (see kviews.txt) \n", mrf_mode);
+		if (mrf_mode==1)
+			fprintf(finfo, "\t%-50s%20s%05d \n", "MRF Labeling timing file in:", "mrfasl_schedules/ \n", mrf_sched_id );
+		fprintf(finfo, "\n------\n");
+	}
+
 	fprintf(finfo, "Prep parameters:\n");
 	switch (fatsup_mode) {
 		case 0: /* Off */
@@ -4242,11 +4563,6 @@ int write_scan_info() {
 			fprintf(finfo, "\t%-50s%20f %s\n", "SPIR flip angle:", spir_fa, "deg");
 			fprintf(finfo, "\t%-50s%20f %s\n", "SPIR inversion time:", (float)spir_ti*1e-3, "ms");
 			break;
-	}
-
-	if (mrf_mode ){
-		fprintf(finfo, "\nMRF MODE ON - SEE MRF SCHEDULE LOGS FOR TIMING \n");
-		fprintf(finfo, "\t%-50s%20s%05d \n", "MRF timing file in:", "mrfasl_schedules/", mrf_sched_id );
 	}
 
 	if (prep1_id == 0)
@@ -4333,7 +4649,7 @@ int write_scan_info() {
 		fprintf(finfo, "\t%-50s%20d\n", "VS Type (FTVS phase(1) BIR8 venc(2))", doVelSpectrum); 
 		fprintf(finfo, "\t%-50s%20d\n", "N. frames per encode/target_velocity", vspectrum_Navgs);
 		fprintf(finfo, "\t%-50s%20f\n", "Velocity target increments (cm/s) if VS type 1", vel_target_incr); 
-		fprintf(finfo, "\t%-50s%20f\n", "Velocity encoding Grad increments (G/cm) if VS type 2", prep1_delta_gmax); 
+		fprintf(finfo, "\t%-50s%20f\n", "Velocity encoding Grad increments (G/cm) if VS type 2", prep2_delta_gmax); 
 	}
 
 	fclose(finfo);
