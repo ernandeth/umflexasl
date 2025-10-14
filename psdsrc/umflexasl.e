@@ -247,6 +247,9 @@ int prep_axis = 0;
 /* cardiac trigger option */
 int do_cardiac_gating = 0 with {0, 1, 0, VIS, "Flag to control cardiac gating. (1) Do Cardiac Gating. (0) Don't do Cardiac Gating"};
 
+/* Respiratory trigger option */
+int do_resp_gating = 0 with {0, 1, 0, VIS, "Flag to control Respiratory gating. (1) Do Resp Gating. (0) Don't "};
+
 /* Declare PCASL variables (cv)*/
 int pcasl_pld 	= 1500*1e3 with {0, , 0, VIS, "PCASL prep  : (ms) post-labeling delay ( includes background suppression)",};
 int pcasl_duration = 1500*1e3 with {0, , 0, VIS, "PCASL prep  : (ms) Labeling Duration)",}; /* this is the bolus duration, NOT the duration of a single cycle */
@@ -2532,6 +2535,13 @@ int rspslq;
 /* For Prescan: K */
 int seqCount;
 
+/**** Resp Gating rspvars ****/
+short resp_phase, resp_rate;
+int rtrig_val_st;  /* starting and stopping resp. trigger points */
+int rtrig_val_end;
+int rtrig_maxct;
+int resp_segment_length = 1;
+
 @inline Prescan.e PSrspvar 
 
 
@@ -3574,6 +3584,11 @@ STATUS scan( void )
 				if (do_cardiac_gating) {
                 	settrigger(TRIG_ECG, 0);
                 	fprintf(stderr, "scan(): Setting ECG Trigger\n");
+				}
+				/* Resp gating option - prior to presaturation pulse */
+				if (do_resp_gating) {
+                	settrigger(TRIG_RESP, 0);
+                	fprintf(stderr, "scan(): Setting Resp Trigger\n");
 				}
 
 				/* play the ASL pre-saturation pulse to reset magnetization */
