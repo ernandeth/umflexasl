@@ -3858,10 +3858,12 @@ int genspiral() {
 	/* generate the vd-spiral out gradients */	
 	calc_vds(SLEWMAX, GMAX, dt, dt, 1, F, 2, kxymax, MAXWAVELEN, &gx_vds, &gy_vds, &n_vds);
 
-	/* calculate gradient ramp-down */
+	/* calculate gradient ramp-down N. of points*/
 	n_rmp = ceil(fmax(fabs(gx_vds[n_vds - 1]), fabs(gy_vds[n_vds - 1])) / SLEWMAX / dt);
 	
 	/* the ramp down may be too fast - lots of gradient errors.  slowing it down here */
+	n_rmp *=2;
+	/* more!*/
 	n_rmp *=2;
 
 	gx_rmp = (float *)malloc(n_rmp*sizeof(float));
