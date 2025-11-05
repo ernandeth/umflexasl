@@ -184,6 +184,7 @@ float arf180, arf180ns;
 int ro_type = 2 with {1, 3, 2, VIS, "FSE (1), SPGR (2), or bSSFP (3)",};
 float SE_factor = 1.5 with {0.01, 10.0 , 1.5, VIS, "Adjustment for the slice width of the refocuser",};
 int	doNonSelRefocus = 1 with {0, 1, 0, VIS, "Use a RECT non-selective refocuser pulse",};
+int force_spiral_out = 0;
 
 int fatsup_mode = 1 with {0, 3, 1, VIS, "none (0), CHESS (1), or SPIR (2)",};
 int fatsup_off = -520 with { , , -520, VIS, "fat suppression pulse frequency offset (Hz)",};
@@ -3844,7 +3845,7 @@ int genspiral() {
 	F1 =(vds_acc1 * (float)opfov/10.0 / (float)narms - F0) / kxymax  ; 
 	F2 = 0;
 	
-	if (ro_type == 1) { /* FSE and bSSFP - spiral in-out */
+	if ((ro_type == 1) && (force_spiral_out==0)){ /* FSE and bSSFP - spiral in-out */
 		F0 /= 2;
 		F1 /= 2;
 		F2 /= 2;
@@ -3908,7 +3909,7 @@ int genspiral() {
 	reverseArray(gx_sprlo, n_sprl, gx_sprli);
 	reverseArray(gy_sprlo, n_sprl, gy_sprli);
 
-	if (ro_type == 2) { /* SPGR - spiral out */
+	if ((ro_type == 2) || (force_spiral_out==1)) { /* SPGR - spiral out */
 		/* calculate window lengths */
 		grad_len = nnav + n_sprl;
 		acq_len = nnav + n_vds;
