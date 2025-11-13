@@ -184,7 +184,7 @@ float arf180, arf180ns;
 int ro_type = 2 with {1, 3, 2, VIS, "FSE (1), SPGR (2), or bSSFP (3)",};
 float SE_factor = 1.5 with {0.01, 10.0 , 1.5, VIS, "Adjustment for the slice width of the refocuser",};
 int	doNonSelRefocus = 1 with {0, 1, 0, VIS, "Use a RECT non-selective refocuser pulse",};
-int force_spiral_out = 0;
+int force_spiral_out = 1;
 
 int fatsup_mode = 1 with {0, 3, 1, VIS, "none (0), CHESS (1), or SPIR (2)",};
 int fatsup_off = -520 with { , , -520, VIS, "fat suppression pulse frequency offset (Hz)",};
@@ -201,7 +201,7 @@ float crushfac = 2.0 with {0, 10, 0, VIS, "crusher amplitude factor (a.k.a. cycl
 int kill_grads = 0 with {0, 1, 0, VIS, "option to turn off readout gradients",};
 
 /* Trajectory cvs */
-int nnav = 250 with {0, 1000, 250, VIS, "number of navigator points in spiral",};
+int nnav = 100 with {0, 1000, 250, VIS, "number of navigator points in spiral",};
 int narms = 1 with {1, 1000, 1, VIS, "number of spiral arms - in SOS, this is interleaves/shots",};
 int spi_mode = 2 with {0, 4, 0, VIS, "SOS (0), TGA (1), 3DTGA (2) rotmats from File (3) traj AND rotmats from file (4)",};
 int grad_id = 13; /* file ID for arbitrary gradients and rotation matrices*/
@@ -603,7 +603,6 @@ STATUS cveval( void )
 	cvmax(opuser1, 1000);	
 	esp = 4*round(opuser1*1e3/4);
 	
-
 	piuset += use3;
 	cvdesc(opuser3, "Number of frames");
 	cvdef(opuser3, nframes);
@@ -1614,6 +1613,10 @@ STATUS predownload( void )
 
 			deadtime2_seqcore = (opte - minesp)/2; 
 			deadtime2_seqcore += (flowcomp_flag == 1 && spi_mode == 0)*(pw_gzfca + pw_gzfc + pw_gzfcd + pgbuffertime);		
+
+			/* rounding deadtimes to 4 us*/
+			deadtime1_seqcore = 4*round(deadtime1_seqcore/4);
+			deadtime2_seqcore = 4*round(deadtime2_seqcore/4);
 
 			minte += deadtime1_seqcore; 
 			deadtime_rf0core = opte - minte;
@@ -3955,7 +3958,10 @@ int genspiral() {
 
 	fclose(fID_ktraj);
 	fclose(fID_ktraj_all);
-
+	
+	free(gx);
+	free(gy);
+	
 	return SUCCESS;
 }
 
@@ -4115,7 +4121,7 @@ int genviews() {
 
 					/* the spiral in-out case rotates by only 90 degreesq  -
 					This happens in FSE and SSFP readouts*/
-					if (ro_type != 2) 
+					if ((ro_type != 2) && (force_spiral_out==0))
 						rz /= 2;
 					
 					switch (spi_mode) {
@@ -4506,6 +4512,7 @@ int write_scan_info() {
 			fprintf(finfo, "\t%-50s%20f %s\n", "Echo time:", (float)opte*1e-3, "ms");
 			fprintf(finfo, "\t%-50s%20d \n", "variable FA flag:", varflip );
 			fprintf(finfo, "\t%-50s%20d \n", "Non-selective rect pulse refocuser ", doNonSelRefocus );		
+			fprintf(finfo, "\t%-50s%20d \n", "Spiral OUT only ", force_spiral_out );		
 			break;
 		case 2: /* SPGR */
 			fprintf(finfo, "\t%-50s%20s\n", "Readout type:", "SPGR");
