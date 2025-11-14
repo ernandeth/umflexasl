@@ -185,7 +185,7 @@ int ro_type = 2 with {1, 4, 2, VIS, "(1) FSE, (2) FSE with spiral out, (3) SPGR,
 float SE_factor = 1.5 with {0.01, 10.0 , 1.5, VIS, "Adjustment for the slice width of the refocuser",};
 int	doNonSelRefocus = 1 with {0, 1, 0, VIS, "Use a RECT non-selective refocuser pulse",};
 int force_spiral_out = 0;
-int spiral_mode = 0 with {0,2,0, VIS, "spiral in-out (0) or spiral out (1)",};
+int spiral_out_mode = 0 with {0,2,0, VIS, "spiral in-out (0) or spiral out (1)",};
 
 int fatsup_mode = 1 with {0, 3, 1, VIS, "none (0), CHESS (1), or SPIR (2)",};
 int fatsup_off = -520 with { , , -520, VIS, "fat suppression pulse frequency offset (Hz)",};
@@ -588,7 +588,7 @@ STATUS cveval( void )
 	Notice that the actual valuse of use0-use17 are the same as the ones in use31-use48 */
  
 	piuset += use0;
-	cvdesc(opuser0, "Readout type: (1) FSE, (2) FSE with spiral out, (3) SPGR, (4) bSSFP ");
+	cvdesc(opuser0, "Readout: (1)FSE (2)FSE spiral-out (3)SPGR (4)bSSFP ");
 	cvdef(opuser0, ro_type);
 	opuser0 = ro_type;
 	cvmin(opuser0, 1);
@@ -597,10 +597,10 @@ STATUS cveval( void )
 	switch(ro_type){
 		case 1:
 		case 4:
-			spiral_mode = 0; /* spiral in-out */
+			spiral_out_mode = 0; /* spiral in-out */
 			break;
 		default:
-			spiral_mode = 1;/* spiral out only */
+			spiral_out_mode = 1;/* spiral out only */
 			break; 
 	}
 
@@ -1619,18 +1619,20 @@ STATUS predownload( void )
 			minte += pw_gxw/2; /* first half of spiral readout */
 
 			/* calculate deadtimes */
-			deadtime1_seqcore = (opte - minesp)/2;
+			deadtime1_seqcore = (opte - minesp)/2; /* old code - wrong?*/
 			deadtime1_seqcore -= (flowcomp_flag == 1 && spi_mode == 0)*(pw_gzfca + pw_gzfc + pw_gzfcd + pgbuffertime); /* adjust for flowcomp symmetry */
 
-			deadtime2_seqcore = (opte - minesp)/2; 
+			deadtime2_seqcore = (opte - minesp)/2; /* old code - wrong?*/
 			deadtime2_seqcore += (flowcomp_flag == 1 && spi_mode == 0)*(pw_gzfca + pw_gzfc + pw_gzfcd + pgbuffertime);		
-
-			/* rounding deadtimes to 4 us*/
-			deadtime1_seqcore = 4*round(deadtime1_seqcore/4);
-			deadtime2_seqcore = 4*round(deadtime2_seqcore/4);
 
 			minte += deadtime1_seqcore; 
 			deadtime_rf0core = opte - minte;
+
+			/* rounding deadtimes to nearest 4 us*/
+			deadtime1_seqcore = 4*round(deadtime1_seqcore/4);
+			deadtime2_seqcore = 4*round(deadtime2_seqcore/4);
+			deadtime_rf0core = 4*round(deadtime_rf0core/4);
+
 /*			
 			deadtime_rf0core = opte/2 - (pw_gzrf0/2 + pw_gzrf0d);
 			deadtime_rf0core -= pgbuffertime;
@@ -1888,6 +1890,10 @@ STATUS predownload( void )
 	
 	fprintf(stderr, "\n--optr %d " , optr);
 	fprintf(stderr, "\n--opetl %d " , opetl);
+	fprintf(stderr, "\n--deadtime_rf0core %d " , deadtime_rf0core);
+	fprintf(stderr, "\n--deadtime1_seqcore %d " , deadtime1_seqcore);
+	fprintf(stderr, "\n--deadtime2_seqcore %d " , deadtime2_seqcore);
+	fprintf(stderr, "\n--dur_rf0core %d " , dur_rf0core);
 	fprintf(stderr, "\n--dur_rf1core %d " , dur_rf1core);
 	fprintf(stderr, "\n--dur_rf1nscore %d " , dur_rf1core);
 	fprintf(stderr, "\n--dur_seqcore %d " , dur_seqcore);
@@ -3864,7 +3870,7 @@ int genspiral() {
 	F1 =(vds_acc1 * (float)opfov/10.0 / (float)narms - F0) / kxymax  ; 
 	F2 = 0;
 	
-	if (spiral_mode == 0){ /* spiral in-out case */
+	if (spiral_out_mode == 0){ /* spiral in-out case */
 		F0 /= 2;
 		F1 /= 2;
 		F2 /= 2;
@@ -3873,7 +3879,7 @@ int genspiral() {
 	F[1] = F1;
 	F[2] = F2;
 	
-	fprintf(stderr, "genspiral(): mode: %d,  FOV coefficients are %0.2f %0.2f\n", spiral_mode, F0, F1);
+	fprintf(stderr, "genspiral(): mode: %d,  FOV coefficients are %0.2f %0.2f\n", spiral_out_mode, F0, F1);
 
 	/* generate the vd-spiral out gradients */	
 	calc_vds(SLEWMAX, GMAX, dt, dt, 1, F, 2, kxymax, MAXWAVELEN, &gx_vds, &gy_vds, &n_vds);
@@ -3930,7 +3936,7 @@ int genspiral() {
 
 	// if ((ro_type == 2) || (force_spiral_out==1)) { /* SPGR - spiral out */
 
-	if (spiral_mode == 1)  {    /* spiral out only */
+	if (spiral_out_mode == 1)  {    /* spiral out only */
 		/* calculate window lengths */
 		grad_len = nnav + n_sprl;
 		acq_len = nnav + n_vds;
@@ -4139,7 +4145,7 @@ int genviews() {
 
 					/* the spiral in-out case rotates by only 90 degreesq  -
 					This happens in FSE and SSFP readouts*/
-					if (spiral_mode == 0 )
+					if (spiral_out_mode == 0 )
 						rz /= 2;
 					
 					switch (spi_mode) {
@@ -4531,7 +4537,7 @@ int write_scan_info() {
 			fprintf(finfo, "\t%-50s%20f %s\n", "Echo time:", (float)opte*1e-3, "ms");
 			fprintf(finfo, "\t%-50s%20d \n", "variable FA flag:", varflip );
 			fprintf(finfo, "\t%-50s%20d \n", "Non-selective rect pulse refocuser ", doNonSelRefocus );		
-			if (spiral_mode==0)
+			if (spiral_out_mode==0)
 				fprintf(finfo, "\t%-50s%20s\n", "Spiral Mode ", "In-Out" );
 			else
 				fprintf(finfo, "\t%-50s%20s\n", "Spiral Mode ", "Out Only" );
