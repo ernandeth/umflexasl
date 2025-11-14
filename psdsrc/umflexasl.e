@@ -181,10 +181,11 @@ int ndisdaqechoes = 0 with {0, , 0, VIS, "number of disdaq echos at beginning of
 int varflip = 1 with {0,1,1, VIS, "do variable flip angles (FSE case)- make sure opflip=180 for this", };
 float arf180, arf180ns; 
 
-int ro_type = 2 with {1, 3, 2, VIS, "FSE (1), SPGR (2), or bSSFP (3)",};
+int ro_type = 2 with {1, 4, 2, VIS, "(1) FSE, (2) FSE with spiral out, (3) SPGR, (4) bSSFP ",};
 float SE_factor = 1.5 with {0.01, 10.0 , 1.5, VIS, "Adjustment for the slice width of the refocuser",};
 int	doNonSelRefocus = 1 with {0, 1, 0, VIS, "Use a RECT non-selective refocuser pulse",};
-int force_spiral_out = 1;
+int force_spiral_out = 0;
+int spiral_mode = 0 with {0,2,0, VIS, "spiral in-out (0) or spiral out (1)",};
 
 int fatsup_mode = 1 with {0, 3, 1, VIS, "none (0), CHESS (1), or SPIR (2)",};
 int fatsup_off = -520 with { , , -520, VIS, "fat suppression pulse frequency offset (Hz)",};
@@ -587,14 +588,23 @@ STATUS cveval( void )
 	Notice that the actual valuse of use0-use17 are the same as the ones in use31-use48 */
  
 	piuset += use0;
-	cvdesc(opuser0, "Readout type: (1) FSE, (2) SPGR, (3) bSSFP");
+	cvdesc(opuser0, "Readout type: (1) FSE, (2) FSE with spiral out, (3) SPGR, (4) bSSFP ");
 	cvdef(opuser0, ro_type);
 	opuser0 = ro_type;
 	cvmin(opuser0, 1);
-	cvmax(opuser0, 3);	
+	cvmax(opuser0, 4);	
 	ro_type = opuser0;
+	switch(ro_type){
+		case 1:
+		case 4:
+			spiral_mode = 0; /* spiral in-out */
+			break;
+		default:
+			spiral_mode = 1;/* spiral out only */
+			break; 
+	}
 
-	if (ro_type > 1) /* Not applicable for FSE */
+	if (ro_type > 2) /* Not applicable for FSE */
 		piuset += use1;
 	cvdesc(opuser1, "ESP (short TR) (ms)");
 	cvdef(opuser1, esp*1e-3);
@@ -1016,7 +1026,7 @@ STATUS predownload( void )
 #include "predownload.in"	/* include 'canned' predownload code */
 	/*********************************************************************/
 
-	if (ro_type != 1){
+	if (ro_type <= 2){
 		SE_factor=1.0;
 		doNonSelRefocus = 0;
 	}
@@ -1089,13 +1099,13 @@ STATUS predownload( void )
 	if (rf0_b1 > maxB1[L_SCAN]) maxB1[L_SCAN] = rf0_b1;
 
 	rf180_b1 = calc_sinc_B1(cyc_rf1, pw_rf1, 180);
-	if (ro_type==1){
+	if (ro_type<=2){
 		fprintf(stderr, "predownload(): maximum B1 for a 180 deg pulse: %f\n", rf180_b1);
 		if (rf180_b1 > maxB1[L_SCAN]) maxB1[L_SCAN] = rf180_b1;
 	}
 
 	rf180ns_b1 = calc_hard_B1(pw_rf1ns, 180);
-	if (ro_type==1){
+	if (ro_type<=2){
 		fprintf(stderr, "predownload(): maximum B1 for a 180 deg RECT pulse: %f\n", rf180ns_b1);
 		if (rf180ns_b1 > maxB1[L_SCAN]) maxB1[L_SCAN] = rf180ns_b1;
 	}
@@ -1441,7 +1451,7 @@ STATUS predownload( void )
 	pw_gzrf0rd = tmp_pwd;
 	a_gzrf0r = tmp_a;
 	
-	if (ro_type > 1) { /* GRE modes - make trap2 a slice select refocuser */
+	if (ro_type > 2) { /* GRE modes - make trap2 a slice select refocuser */
 		pw_gzrf1trap2 = tmp_pw;
 		pw_gzrf1trap2a = tmp_pwa;
 		pw_gzrf1trap2d = tmp_pwd;
@@ -1558,7 +1568,8 @@ STATUS predownload( void )
 	minesp = 0;
 	minte = 0;
 	switch (ro_type) {
-		case 1: /* FSE */
+		case 1: /* FSE - spiral out and in-out cases */
+		case 2:
 			
 			/* calculate minimum esp (time from rf1 to next rf1) */
 			if (doNonSelRefocus)
@@ -1633,11 +1644,11 @@ STATUS predownload( void )
 */
 			minte = (int)fmax(minte, minesp);
 			minesp = 0; /* no restriction on esp cv - let opte control the echo spacing */
-			fprintf(stderr, "\n -- calculated minTE and minESP: %d and  %d\n", minte , minesp);
+			fprintf(stderr, "\n -- FSE case: calculated minTE and minESP: %d and  %d\n", minte , minesp);
 	
 			break;
 
-		case 2: /* SPGR */
+		case 3: /* SPGR */
 			
 			/* calculate minimum esp (time from rf1 to next rf1) */
 			minesp += pw_gzrf1/2 + pw_gzrf1d; /* 2nd half of rf1 pulse */
@@ -1672,10 +1683,12 @@ STATUS predownload( void )
 			deadtime1_seqcore = opte - minte;
 			minesp += deadtime1_seqcore; /* add deadtime1 to minesp calculation */
 			deadtime2_seqcore = esp - minesp;
-		
+			
+			fprintf(stderr, "\n -- SPGR case: calculated minTE and minESP: %d and  %d\n", minte , minesp);
+
 			break;
 
-		case 3: /* bSSFP */
+		case 4: /* bSSFP */
 
 			/* calculate minimum esp (time from rf1 to next rf1) */
 			minesp += pw_gzrf1/2 + pw_gzrf1d; /* 2nd half of rf1 pulse */
@@ -1710,6 +1723,8 @@ STATUS predownload( void )
 			minesp += deadtime1_seqcore; /* add deadtime1 to minesp calculation */
 			deadtime2_seqcore = esp - minesp;
 			
+			fprintf(stderr, "\n -- bSSFP case: calculated minTE and minESP: %d and  %d\n", minte , minesp);
+
 			break;
 	}
 	fprintf(stderr, "\ncalculated minTE and minESP: %d and  %d\n", minte , minesp);
@@ -1731,14 +1746,15 @@ STATUS predownload( void )
 		deadtime_fatsupcore -= pgbuffertime;
 		switch (ro_type) {
 			case 1: /* FSE */
+			case 2:
 				deadtime_fatsupcore -= (pw_gzrf0a + pw_gzrf0/2); /* first half of tipdown */
 				break;
-			case 2: /* SPGR */
+			case 3: /* SPGR */
 				deadtime_fatsupcore -= (pw_gzrf1trap1a + pw_gzrf1trap1 + pw_gzrf1trap2);
 				deadtime_fatsupcore -= pgbuffertime;
 				deadtime_fatsupcore -= (pw_gzrf1a + pw_gzrf1/2);
 				break;
-			case 3: /* bSSFP */
+			case 4: /* bSSFP */
 				deadtime_fatsupcore -= (pw_gzrf1a + pw_gzrf1/2);
 				break;
 		}
@@ -1846,7 +1862,7 @@ STATUS predownload( void )
 	absmintr += (prep2_id > 0)*(dur_prep2core + TIMESSI + prep2_pld + TIMESSI);
 	absmintr += (fatsup_mode > 0)*(dur_fatsupcore + TIMESSI);
 
-	if (ro_type == 1) /* FSE - add the rf0 pulse */
+	if (ro_type <=2) /* FSE - add the rf0 pulse */
 		absmintr += dur_rf0core + TIMESSI;
 
 	if(doNonSelRefocus) /* happens only in FSE mode */
@@ -2390,7 +2406,7 @@ STATUS pulsegen( void )
 	fprintf(stderr, "pulsegen(): beginning pulse generation of rf1 core\n");
 	tmploc = 0;
 
-	if (ro_type != 3) { /* bSSFP - do not use trap1 */
+	if (ro_type != 4) { /* bSSFP - do not use trap1 */
 		fprintf(stderr, "pulsegen(): generating gzrf1trap1 (pre-rf1 gradient trapezoid)...\n");
 		tmploc += pgbuffertime; /* start time for gzrf1trap1 */
 		TRAPEZOID(ZGRAD, gzrf1trap1, tmploc + pw_gzrf1trap1a, 3200, 0, loggrd);
@@ -2406,7 +2422,7 @@ STATUS pulsegen( void )
 	tmploc += pw_gzrf1a + pw_gzrf1 + pw_gzrf1d; /* end time for rf2 pulse */
 	fprintf(stderr, " end: %dus\n", tmploc);
 
-	if (ro_type != 3) { /* bSSFP - do not use trap2 */
+	if (ro_type != 4) { /* bSSFP - do not use trap2 */
 		fprintf(stderr, "pulsegen(): generating gzrf1trap2 (post-rf1 gradient trapezoid)...\n");
 		tmploc += pgbuffertime; /* start time for gzrf1trap2 */
 		TRAPEZOID(ZGRAD, gzrf1trap2, tmploc + pw_gzrf1trap2a, 3200, 0, loggrd);
@@ -2429,7 +2445,7 @@ STATUS pulsegen( void )
 	fprintf(stderr, "pulsegen(): beginning pulse generation of rf1ns core\n");
 	tmploc = 0;
 
-	if (ro_type != 3) { /* bSSFP - do not use trap1 */
+	if (ro_type != 4) { /* bSSFP - do not use trap1 */
 		fprintf(stderr, "pulsegen(): generating rf1trap1ns (pre-rf1 gradient trapezoid)...\n");
 		tmploc += pgbuffertime; /* start time for rf1trap1ns */
 		TRAPEZOID(ZGRAD, rf1trap1ns, tmploc + pw_rf1trap1nsa, 3200, 0, loggrd);
@@ -2445,7 +2461,7 @@ STATUS pulsegen( void )
 	tmploc += pw_rf1ns ; /* end time for rf1ns pulse */
 	fprintf(stderr, " end: %dus\n", tmploc);
 
-	if (ro_type != 3) { /* bSSFP - do not use trap2 */
+	if (ro_type != 4) { /* bSSFP - do not use trap2 */
 		fprintf(stderr, "pulsegen(): generating gzrf1trap2 (post-rf1 gradient trapezoid)...\n");
 		tmploc += pgbuffertime; /* start time for rf1trap2ns */
 		TRAPEZOID(ZGRAD, rf1trap2ns, tmploc + pw_rf1trap2nsa, 3200, 0, loggrd);
@@ -3143,7 +3159,7 @@ STATUS prescanCore() {
 		}
 
 
-		if (ro_type == 1) { /* FSE - play 90 deg. pulse with 0 phase */
+		if (ro_type <= 2) { /* FSE - play 90 deg. pulse with 0 phase */
 			fprintf(stderr, "prescanCore(): playing 90deg FSE tipdown for prescan iteration %d...\n", view);
 			ttotal += play_rf0(0);
 		}	
@@ -3175,7 +3191,7 @@ STATUS prescanCore() {
 				loaddab(&echo1, 0, 0, DABSTORE, view, DABON, PSD_LOAD_DAB_ALL);
 			}
 		
-			if (ro_type == 1){ 
+			if (ro_type <= 2){ 
 				/* FSE - CPMG */
 				/* For FSE case, include variable flip angle refocusers
 				The default is to use a constant refocuser flip angle*/
@@ -3252,9 +3268,9 @@ STATUS prescanCore() {
 		
 			fprintf(stderr, "prescanCore(): Playing flip pulse for prescan iteration %d...\n", view);
 			if (doNonSelRefocus)
-				ttotal += play_rf1ns(90*(ro_type == 1));
+				ttotal += play_rf1ns(90*(ro_type <= 2));
 			else
-				ttotal += play_rf1(90*(ro_type == 1));
+				ttotal += play_rf1(90*(ro_type <= 2));
 
 			/* set rotation matrix for each echo readout */
 			setrotate( tmtxtbl[echon], 0 );
@@ -3388,7 +3404,7 @@ STATUS scan( void )
 		else
 			ttotal += play_deadtime(optr - opetl * (dur_rf1core + TIMESSI + dur_seqcore + TIMESSI));
 		
-		if (ro_type == 1) { /* FSE - play 90 deg. with 0 phase*/
+		if (ro_type <= 2 ) { /* FSE - play 90 deg. with 0 phase*/
 			fprintf(stderr, "scan(): playing 90deg FSE tipdown for disdaq train %d (t = %d / %.0f us)...\n", disdaqn, ttotal, pitscan);
 			play_rf0(0);
 		}	
@@ -3396,7 +3412,7 @@ STATUS scan( void )
 		/* Loop through echoes */
 		for (echon = 0; echon < opetl+ndisdaqechoes; echon++) {
 			fprintf(stderr, "scan(): playing flip pulse for disdaq train %d (t = %d / %.0f us)...\n", disdaqn, ttotal, pitscan);
-			if (ro_type == 1) {/* FSE - CPMG */
+			if (ro_type <= 2) {/* FSE - CPMG */
 				if (doNonSelRefocus)
 					ttotal += play_rf1ns(90 );
 				else
@@ -3624,7 +3640,7 @@ STATUS scan( void )
 					ttotal += play_fatsup();
 				}
 
-				if (ro_type == 1) { /* FSE - play 90 */
+				if (ro_type <= 2) { /* FSE - play 90 */
 					fprintf(stderr, "scan(): playing 90deg FSE tipdown for frame %d, shot %d (t = %d / %.0f us)...\n", framen, shotn, ttotal, pitscan);
 					play_rf0(0);
 				}	
@@ -3632,7 +3648,7 @@ STATUS scan( void )
 				/* play disdaq echoes */
 				for (echon = 0; echon < ndisdaqechoes; echon++) {
 					fprintf(stderr, "scan(): playing flip pulse for frame %d, shot %d, disdaq echo %d (t = %d / %.0f us)...\n", framen, shotn, echon, ttotal, pitscan);
-					if (ro_type == 1) {/* FSE - CPMG */
+					if (ro_type <= 2) {/* FSE - CPMG */
 						if (doNonSelRefocus)
 							ttotal += play_rf1ns(90 );
 						else
@@ -3649,7 +3665,7 @@ STATUS scan( void )
 				for (echon = 0; echon < opetl; echon++) {
 					
 					fprintf(stderr, "scan(): playing flip pulse for frame %d, shot %d, echo %d (t = %d / %.0f us)...\n", framen, shotn, echon, ttotal, pitscan);
-					if (ro_type == 1){ /* FSE - CPMG */
+					if (ro_type <= 2){ /* FSE - CPMG */
 						
 						/* The default is to use a constant refocuser flip angle*/
 						arf1_var = a_rf1;
@@ -3723,9 +3739,9 @@ STATUS scan( void )
 						}
 
 						if (doNonSelRefocus)
-							ttotal += play_rf1ns(90 * (ro_type == 1) );
+							ttotal += play_rf1ns(90 * (ro_type <= 2) );
 						else
-							ttotal += play_rf1(90 * (ro_type == 1));
+							ttotal += play_rf1(90 * (ro_type <= 2));
 					}
 					else  /* SPGR and SSFP cases */
 					{
@@ -3848,7 +3864,7 @@ int genspiral() {
 	F1 =(vds_acc1 * (float)opfov/10.0 / (float)narms - F0) / kxymax  ; 
 	F2 = 0;
 	
-	if ((ro_type == 1) && (force_spiral_out==0)){ /* FSE and bSSFP - spiral in-out */
+	if (spiral_mode == 0){ /* spiral in-out case */
 		F0 /= 2;
 		F1 /= 2;
 		F2 /= 2;
@@ -3857,7 +3873,7 @@ int genspiral() {
 	F[1] = F1;
 	F[2] = F2;
 	
-	fprintf(stderr, "genspiral(): FOV coefficients are %0.2f %0.2f\n", F0, F1);
+	fprintf(stderr, "genspiral(): mode: %d,  FOV coefficients are %0.2f %0.2f\n", spiral_mode, F0, F1);
 
 	/* generate the vd-spiral out gradients */	
 	calc_vds(SLEWMAX, GMAX, dt, dt, 1, F, 2, kxymax, MAXWAVELEN, &gx_vds, &gy_vds, &n_vds);
@@ -3912,7 +3928,9 @@ int genspiral() {
 	reverseArray(gx_sprlo, n_sprl, gx_sprli);
 	reverseArray(gy_sprlo, n_sprl, gy_sprli);
 
-	if ((ro_type == 2) || (force_spiral_out==1)) { /* SPGR - spiral out */
+	// if ((ro_type == 2) || (force_spiral_out==1)) { /* SPGR - spiral out */
+
+	if (spiral_mode == 1)  {    /* spiral out only */
 		/* calculate window lengths */
 		grad_len = nnav + n_sprl;
 		acq_len = nnav + n_vds;
@@ -3925,7 +3943,7 @@ int genspiral() {
 		catArray(gx_sprlo, 0, gx_sprlo, n_sprl, nnav, gx);
 		catArray(gy_sprlo, 0, gy_sprlo, n_sprl, nnav, gy);
 	}
-	else { /* FSE & bSSFP - spiral in-out */
+	else { /*  spiral in-out */
 		
 		/* calculate window lengths */
 		grad_len = 2*(n_rmp + n_rwd + n_vds) + nnav;
@@ -4121,7 +4139,7 @@ int genviews() {
 
 					/* the spiral in-out case rotates by only 90 degreesq  -
 					This happens in FSE and SSFP readouts*/
-					if ((ro_type != 2) && (force_spiral_out==0))
+					if (spiral_mode == 0 )
 						rz /= 2;
 					
 					switch (spi_mode) {
@@ -4507,21 +4525,25 @@ int write_scan_info() {
 	fprintf(finfo, "Readout parameters:\n");
 	switch (ro_type) {
 		case 1: /* FSE */
+		case 2 :
 			fprintf(finfo, "\t%-50s%20s\n", "Readout type:", "FSE");
 			fprintf(finfo, "\t%-50s%20f %s\n", "Flip (inversion) angle:", opflip, "deg");
 			fprintf(finfo, "\t%-50s%20f %s\n", "Echo time:", (float)opte*1e-3, "ms");
 			fprintf(finfo, "\t%-50s%20d \n", "variable FA flag:", varflip );
 			fprintf(finfo, "\t%-50s%20d \n", "Non-selective rect pulse refocuser ", doNonSelRefocus );		
-			fprintf(finfo, "\t%-50s%20d \n", "Spiral OUT only ", force_spiral_out );		
+			if (spiral_mode==0)
+				fprintf(finfo, "\t%-50s%20s\n", "Spiral Mode ", "In-Out" );
+			else
+				fprintf(finfo, "\t%-50s%20s\n", "Spiral Mode ", "Out Only" );
 			break;
-		case 2: /* SPGR */
+		case 3: /* SPGR */
 			fprintf(finfo, "\t%-50s%20s\n", "Readout type:", "SPGR");
 			fprintf(finfo, "\t%-50s%20f %s\n", "Flip angle:", opflip, "deg");
 			fprintf(finfo, "\t%-50s%20f %s\n", "Echo time:", (float)opte*1e-3, "ms");
 			fprintf(finfo, "\t%-50s%20f %s\n", "ESP (short TR):", (float)esp*1e-3, "ms");
 			fprintf(finfo, "\t%-50s%20s\n", "RF phase spoiling:", (rfspoil_flag) ? ("on") : ("off"));	
 			break;
-		case 3: /* bSSFP */
+		case 4: /* bSSFP */
 			fprintf(finfo, "\t%-50s%20s\n", "Readout type:", "bSSFP");
 			fprintf(finfo, "\t%-50s%20f %s\n", "Flip angle:", opflip, "deg");
 			fprintf(finfo, "\t%-50s%20f %s\n", "Echo time:", (float)opte*1e-3, "ms");
