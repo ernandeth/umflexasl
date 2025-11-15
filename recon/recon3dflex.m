@@ -199,7 +199,7 @@ function x = recon3dflex(varargin)
     end
 
     % Making sense maps (after compressing the data, if needed)
-    if args.coilwise 
+    if (args.coilwise == 1)
         % rearrange for coil-wise reconstruction of frame 1 (for making SENSE maps)
         % pretend the coil images are the frames and it's only one coil  
         kdata = permute(kdata(:,:,1,:),[1,2,4,3]);
@@ -245,7 +245,6 @@ function x = recon3dflex(varargin)
         % if we are using the parallel pool , uncomment this.
         % set up the parallel pool
         if isempty(gcp('nocreate')), parpool(4), end
-
         parfor i = 1:length(args.frames)
 
             framen = args.frames(i);
@@ -266,7 +265,7 @@ function x = recon3dflex(varargin)
                 % below.
                 b = Aold' * b;
                 [tmp, flag, rRes] = pcg(Aregtv, b(:), 1e-4, args.niter,[],[], x0(:));
-                fprintf("Regularized CG ended with residual fraction: %0.3g \n", rRes);
+                fprintf("TV Regularized CG ended with residual fraction: %0.3g \n", rRes);
                 x(:,:,:,i) = reshape(tmp, N);
 
             else
@@ -317,7 +316,7 @@ function x = recon3dflex(varargin)
                 % case will call Matlab's pcg instead of the cg_solve
                 % below.
                 b = Aold' * b;
-                [tmp, flag, rRes] = pcg(Areg, b(:), 1e-5, args.niter,[],[], x0(:));
+                [tmp, flag, rRes] = pcg(Aregtv, b(:), 1e-5, args.niter,[],[], x0(:));
                 fprintf('regularized CG ended with residual fraction: %0.3g \n', rRes);
                 x(:,:,:,i) = reshape(tmp, N);
             else
@@ -328,6 +327,8 @@ function x = recon3dflex(varargin)
 
         end
     end
+
+    save reconlog.mat args
 
 end
 
