@@ -20,8 +20,12 @@ function x = recon3dflex(varargin)
 %   - smap: sensitivity map (must be [image size x ncoils]), leave empty
 %       to compress coils
 %   - niter: number of iterations for CG reconstruction
-%   - coilwise: option to rearrange data for coil-wise recon of 1st frame,
-%       this is useful for creating SENSE maps from fully-sampled data
+%   - coilwise: recon individual coil images - necessary for creating sense
+%                   maps for subsequent CGSENSE recon
+%               1 - rearrange data for coil-wise recon of 1st frame,
+%               2 - rearrange data for coilwise recon from ALL frames,
+%               when each frame has different parts of k-space
+%               (an in MRF type data)
 %   - resfac: image space resolution upsampling factor
 %   - ccfac: coil compression factor (i.e. ccfac = 4 will compressed data
 %       to 1/4 of the channels)
@@ -74,9 +78,14 @@ function x = recon3dflex(varargin)
     args = vararg_pair(defaults,varargin);
 
     % get data from pfile
-    [kdata,klocs,N,fov] = aslrec.read_data(args.pfile , args.mrf_mode);
+    if (args.mrf_mode == 1) || (args.coilwise == 2)
+        read_mrf_data_flag = 1;
+    else
+        read_mrf_data_flag = 0;
+    end
+    [kdata,klocs,N,fov] = aslrec.read_data(args.pfile , read_mrf_data_flag);
 
-    % go to single precision
+    % go to single precision to save memory!
     kdata = single(kdata);
     klocs = single(klocs);
 
@@ -108,7 +117,7 @@ function x = recon3dflex(varargin)
 
         sv = args.selectviews(:)';
 
-        if args.mrf_mode
+        if (args.mrf_mode) || (args.coilwise==2)
             tmp = repmat(sv, nframes,1);
             tmp = tmp + nviews*[0:nframes-1]';
             tmp = tmp';
@@ -198,13 +207,28 @@ function x = recon3dflex(varargin)
 
     end
 
-    % Making sense maps (after compressing the data, if needed)
-    if (args.coilwise == 1)
-        % rearrange for coil-wise reconstruction of frame 1 (for making SENSE maps)
-        % pretend the coil images are the frames and it's only one coil  
-        kdata = permute(kdata(:,:,1,:),[1,2,4,3]);
-        args.frames = 1:size(kdata,3);
-        ncoils =1;
+    switch(args.coilwise)
+        case 1
+            % Prepare data for making coil images from the first frame (after compressing the data, if needed)
+            % rearrange for coil-wise reconstruction of frame 1 (for making SENSE maps)
+            % pretend the coil images are the frames and it's only one coil
+            kdata = permute(kdata(:,:,1,:),[1,2,4,3]);
+            args.frames = 1:size(kdata,3);
+            ncoils =1;
+        case 2
+            % Prepare data for making coil images by concatenating all the frames
+            % into one
+            kdata = reshape(kdata, ndat, nviews*nframes, ncoils);
+
+            % update sizes
+            ndat = size(kdata,1);   % number of data per view.
+            nviews = size(kdata,2);  % number of view per frame
+            nframes = size(kdata,3); % number of frames is now the number of coils
+            ncoils = size(kdata,4); % number of coils should be 1
+            framesize = ndat*nviews;  % number of data per frame.
+            args.frames = 1:nframes;
+        otherwise
+            % do nothing
     end
 
 
@@ -259,19 +283,23 @@ function x = recon3dflex(varargin)
             x0 = reshape( A' * (w.*b), N );
             x0 = ir_wls_init_scale(A, b, x0);
             
-            if args.Reg
-                % solve the problem with CG using regularization - this
-                % case will call Matlab's pcg instead of the cg_solve
-                % below.
-                b = Aold' * b;
-                [tmp, flag, rRes] = pcg(Aregtv, b(:), 1e-4, args.niter,[],[], x0(:));
-                fprintf("TV Regularized CG ended with residual fraction: %0.3g \n", rRes);
-                x(:,:,:,i) = reshape(tmp, N);
-
+            if args.niter==0  % just the NUFFT - no iterations!
+                x(:,:,:,i) = reshape(x0,N);
             else
-                % solve with CG - no regularization
-                x(:,:,:,i) = cg_solve(x0, A, b, args.niter, ...
-                    sprintf("frame %d/%d: ", i, length(args.frames))); % prefix the output message with frame number
+                if args.Reg
+                    % solve the problem with CG using regularization - this
+                    % case will call Matlab's pcg instead of the cg_solve
+                    % below.
+                    b = Aold' * b;
+                    [tmp, flag, rRes] = pcg(Aregtv, b(:), 1e-4, args.niter,[],[], x0(:));
+                    fprintf("TV Regularized CG ended with residual fraction: %0.3g \n", rRes);
+                    x(:,:,:,i) = reshape(tmp, N);
+
+                else
+                    % solve with CG - no regularization
+                    x(:,:,:,i) = cg_solve(x0, A, b, args.niter, ...
+                        sprintf("frame %d/%d: ", i, length(args.frames))); % prefix the output message with frame number
+                end
             end
         end
 
@@ -299,32 +327,35 @@ function x = recon3dflex(varargin)
             x0 = reshape( A' * (w.*b), N );
             x0 = ir_wls_init_scale(A, b, x0);
 
-            Aold = [];
-            Areg = [];
-            Aregtv = [];
-            L = 0;
-            if args.Reg
-                Aold = A;
-                L = args.Reg;
-                % define A'A + L*eye operator for Tikhonov Regularization
-                Areg = @(x) A'*A*x + L*x;
-
-                % define A'A + D*eye operator for TV regularization
-                Aregtv = @(x) A'*A*x + L*[diff(x) ; 0] ;
-
-                % solve the problem with CG using regularization - this
-                % case will call Matlab's pcg instead of the cg_solve
-                % below.
-                b = Aold' * b;
-                [tmp, flag, rRes] = pcg(Aregtv, b(:), 1e-5, args.niter,[],[], x0(:));
-                fprintf('regularized CG ended with residual fraction: %0.3g \n', rRes);
-                x(:,:,:,i) = reshape(tmp, N);
+            if args.niter==0   % just the NUFFT - no iterations!
+                x(:,:,:,i) = reshape(x0,N);
             else
-                % solve with CG
-                x(:,:,:,i) = cg_solve(x0, A, w.*b, args.niter, ...
-                    sprintf('frame %d/%d: ', i, length(args.frames))); % prefix the output message with frame number
-            end
+                Aold = [];
+                Areg = [];
+                Aregtv = [];
+                L = 0;
+                if args.Reg
+                    Aold = A;
+                    L = args.Reg;
+                    % define A'A + L*eye operator for Tikhonov Regularization
+                    Areg = @(x) A'*A*x + L*x;
 
+                    % define A'A + D*eye operator for TV regularization
+                    Aregtv = @(x) A'*A*x + L*[diff(x) ; 0] ;
+
+                    % solve the problem with CG using regularization - this
+                    % case will call Matlab's pcg instead of the cg_solve
+                    % below.
+                    b = Aold' * b;
+                    [tmp, flag, rRes] = pcg(Aregtv, b(:), 1e-5, args.niter,[],[], x0(:));
+                    fprintf('regularized CG ended with residual fraction: %0.3g \n', rRes);
+                    x(:,:,:,i) = reshape(tmp, N);
+                else
+                    % solve with CG
+                    x(:,:,:,i) = cg_solve(x0, A, w.*b, args.niter, ...
+                        sprintf('frame %d/%d: ', i, length(args.frames))); % prefix the output message with frame number
+                end
+            end
         end
     end
 

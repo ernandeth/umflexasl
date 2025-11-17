@@ -32,8 +32,10 @@ if length(k0inds) < 1
     return 
 end
 
+k0series = zeros(Ncoils, Nframes*Nviews);
 
 for c=1:Ncoils
+    vcount=1;
     for f=1:Nframes
 
         % averaging the navigator data from all the views of each frame as the
@@ -52,7 +54,10 @@ for c=1:Ncoils
             tmp = kdata(:,v,f,c);
             
             vm = mean(tmp(k0inds));
-            
+
+            k0series(c, vcount) = vm;
+            vcount = vcount+1';
+
             if options==2
                 vm = 1*exp(i*angle(vm));
             end
@@ -71,6 +76,7 @@ for c=1:Ncoils
         end
     end
 end
-
+k0series =  sum(k0series, 1);
+save k0series.mat k0series Ncoils Nframes Nviews
 
 return
