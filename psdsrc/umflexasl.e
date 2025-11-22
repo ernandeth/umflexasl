@@ -4289,6 +4289,7 @@ int readprep(int id, int *len,
 	
 	/* Read in RF phase from theta file */
 	sprintf(fname, "./aslprep/pulses/%05d/theta.txt", id);
+	fprintf(stderr, "readprep(): opening %s...\n", fname);
 	fID = fopen(fname, "r");
 
 	/* Check if theta file was read successfully */
@@ -4315,6 +4316,7 @@ int readprep(int id, int *len,
 	
 	/* Read in RF phase from theta file */
 	sprintf(fname, "./aslprep/pulses/%05d/grad.txt", id);
+	fprintf(stderr, "readprep(): opening %s...\n", fname);
 	fID = fopen(fname, "r");
 
 	/* Check if theta file was read successfully */
