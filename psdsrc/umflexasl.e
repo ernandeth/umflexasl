@@ -1026,7 +1026,7 @@ STATUS predownload( void )
 #include "predownload.in"	/* include 'canned' predownload code */
 	/*********************************************************************/
 
-	if (ro_type <= 2){
+	if (ro_type <= 3){
 		SE_factor=1.0;
 		doNonSelRefocus = 0;
 	}
@@ -3187,7 +3187,7 @@ STATUS prescanCore() {
 		for (echon=0; echon<opetl; echon++){
 			
 			if (echon<ndisdaqechoes)
-			{ /* use only the data from the first echo*/
+			{ 
 				fprintf(stderr, "prescanCore(): loaddab(&echo1, 0, 0, 0, %d, DABON, PSD_LOAD_DAB_ALL)...\n", view);
 				loaddab(&echo1, 0, 0, DABSTORE, view, DABOFF, PSD_LOAD_DAB_ALL);
 			}
@@ -4522,7 +4522,7 @@ int write_scan_info() {
 	fprintf(finfo, "Rx parameters:\n");
 	fprintf(finfo, "\t%-50s%20f %s\n", "X/Y FOV:", (float)opfov/10.0, "cm");
 	fprintf(finfo, "\t%-50s%20d \n", "Matrix size:", opxres);
-	fprintf(finfo, "\t%-50s%20f %s\n", "3D slab thickness:", (float)opslquant*opslthick/10.0, "cm"); 	
+	fprintf(finfo, "\t%-50s%20f %s\n", "3D slab thickness:", (float)(opslthick + opslspace) * opslquant/10.0, "cm"); 	
 
 	fprintf(finfo, "Hardware limits:\n");
 	fprintf(finfo, "\t%-50s%20f %s\n", "Max gradient amplitude:", GMAX, "G/cm");
