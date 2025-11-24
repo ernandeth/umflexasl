@@ -3273,10 +3273,17 @@ STATUS prescanCore() {
 			}
 		
 			fprintf(stderr, "prescanCore(): Playing flip pulse for prescan iteration %d...\n", view);
-			if (doNonSelRefocus)
-				ttotal += play_rf1ns(90*(ro_type <= 2));
+			
+			if (ro_type <= 2) {/* FSE - CPMG */
+				if (doNonSelRefocus)
+					ttotal += play_rf1ns(90 );
+				else
+					ttotal += play_rf1(90 );
+				}
 			else
-				ttotal += play_rf1(90*(ro_type <= 2));
+				//ttotal += play_rf1(0);
+				ttotal += play_rf1(rfspoil_flag*117*(echon + ndisdaqechoes));
+
 
 			/* set rotation matrix for each echo readout */
 			setrotate( tmtxtbl[echon], 0 );
