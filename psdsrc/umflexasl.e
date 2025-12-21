@@ -216,7 +216,7 @@ float F2 = 0 with { , , 0, INVIS, "vds fov coefficient 2",};
 
 /* ASL prep pulse cvs */
 int presat_flag = 0 with {0, 1, 0, VIS, "option to play asl pre-saturation pulse at beginning of each tr",};
-int presat_delay = 1000000 with {0, , 1000000, VIS, "ASL pre-saturation delay (us)",};
+int presat_delay = 2500000 with {0, , 2500000, VIS, "ASL pre-saturation delay (us)",};
 int nm0frames = 0 with {0, , 2, VIS, "Number of M0 frames (no prep pulses are played)",};
 
 int zero_ctl_grads = 0 with {0, 1, 0, VIS, "option to zero out control gradients for asl prep pulses",};
