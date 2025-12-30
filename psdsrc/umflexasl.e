@@ -328,6 +328,7 @@ int mrf_mode = 0 with {0, 2, 0, VIS, "MRF mode. (0)=none, (1)= update ASL timing
 int mrf_sched_id = 1;
 float prev_theta = 0.0;  /* rotation angles from last frame */
 float prev_phi = 0.0;    /* rotation angles from last frame */
+float prev_rz = 0.0;    /* rotation angles from last frame (SOS) */
 
 
 
@@ -4160,6 +4161,11 @@ int genviews() {
 							phi = 0.0;
 							theta = 0.0;
 							dz = 2.0/(float)opetl * (center_out_idx(opetl,echon) - 1.0/(float)opnshots*center_out_idx(opnshots,shotn)) - 1.0;
+							
+							if (mrf_mode>0){
+								rz += prev_rz;
+							}
+							
 							break;
 						case 1: /* 2D TGA */
 							phi = 0.0;
@@ -4237,6 +4243,8 @@ int genviews() {
 			prev_theta = theta;
 			/*prev_phi = phi; --- this will just repeat*/
 			prev_phi = pow(-1, nframes)*M_PI* (nfr+1) / nframes;  /* phi rotation angles are now evenly spaced over the frames*/
+			/* SOS case */
+			prev_rz += phi2D;
 		}
 	}
 
