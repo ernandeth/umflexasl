@@ -4242,8 +4242,8 @@ int genviews() {
 			/* prev_phi = acos(1 - 2*(float)(opnshots*opetl*narms*(nfr + 1))/(float)(opnshots*opetl));  */
 			prev_theta = theta;
 			/*prev_phi = phi; --- this will just repeat*/
-			prev_phi = pow(-1, nframes)*M_PI* (nfr+1) / nframes;  /* phi rotation angles are now evenly spaced over the frames*/
-			/* SOS case */
+			prev_phi = M_PI* (nfr+1) / nframes;  /* phi rotation angles are now evenly spaced over the frames*/
+			/* SOS case: rotate along z axis from frame to frame */
 			prev_rz += phi2D;
 		}
 	}
