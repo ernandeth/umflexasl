@@ -36,8 +36,11 @@ function x = recon3dflex(varargin)
 %               0: default is to do nothing.
 %               1: use the complex mean of the navigator segment
 %               2: use only the phase of the segments.
-%   - mrf_mode:  Fingerprinting mode (MRF)means that each temporal frame will 
-%       have a different set of rotation matrices.
+%   - mrf_mode: 0: default - all frames have the same k-space locations
+%               1: Fingerprinting mode (MRF)means that each temporal frame will 
+%                   have a different set of rotation matrices.
+%               2: combine rotation matrices from all even and odd frames,
+%                   the output is only two frames.
 %   - selectviews: which echoes to use for recon and discard the rest.  
 %       This is a vector specifying the views that will be used.
 %       eg - if  Nshots=4 aand ETL=12, 
@@ -92,7 +95,7 @@ function x = recon3dflex(varargin)
     % go to single precision to save memory!
     kdata = single(kdata);
     klocs = single(klocs);
-    
+
     N = ceil(N*args.resfac); % upsample N (image matrix size)
     
     % cut off first 50 pts of acquisition (sometimes gets corrupted)
@@ -105,6 +108,21 @@ function x = recon3dflex(varargin)
     nframes = size(kdata,3); % number of frames
     ncoils = size(kdata,4); % number of coils
     framesize = ndat*nviews;  % number of data per frame.
+
+    % mrf_mode 2, means that the frames even and odd frames will be
+    % aggregates into two single frames
+    if args.mrf_mode==2
+        odds = zeros(ndat,nviews*nframes/2, 1, ncoils);
+        evens = zeros(ndat,nviews*nframes/2, 1, ncoils);
+        for f=1:2:nframes-1
+            oviews = [1:nviews] + (f-1)*nviews; 
+            odds(:,oviews,1,:) = kdata(:,:,f,:);
+
+            eviews = [1:nviews] + f*nviews; 
+            evens(:,eviews,1,:) = kdata(:,:,f+1,:);
+
+        end
+    end
 
     % coil mapping: rearrange for coil-wise reconstruction of frame 1 (for making SENSE maps)
     % if (args.coilwise==1) 

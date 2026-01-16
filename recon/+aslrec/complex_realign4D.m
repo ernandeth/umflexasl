@@ -24,7 +24,9 @@ parfor n=1:size(in, 4)
     rtmp = squeeze(re(:,:,:,n));
     itmp = squeeze(im(:,:,:,n));
 
-    tmp = abs(squeeze(im(:,:,:,n)));
+    tmp = squeeze(im(:,:,:,n));
+    
+    tmp = abs(aslrec.fermismooth3D(tmp, 0.5, 0.1));
 
     % calculate the affine transformation matrix
     tform= imregtform(ref, tmp, 'rigid', optimizer, metric);
