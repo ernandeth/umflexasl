@@ -1,7 +1,7 @@
 function x = recon3dflex(varargin)
-% Function for performing CG-SENSE NUFFT reconstruction for umvsasl data
+% Function for performing regularized CG-SENSE NUFFT reconstruction for umvsasl data
 %
-% by David Frey
+% by David Frey and Luis Hernandez-Garcia
 % 
 % Usage:
 % Specify a data directory using the 'pfile' argument, or simply run this
@@ -48,9 +48,12 @@ function x = recon3dflex(varargin)
 %   - despike (N-std) : replace kspace data in time series by average of
 %       neighboring frames if they deviate more than a specified threshold.
 %       Does the odds and the eves time frames separately (for ASL)
+%   - lp_filter (cutoff) ; use a low pass filter .  zeros-out the data
+%       at locations greater than k_cutoff. 'cutoff' defines fraction of
+%       Kmax.
 %   - hp_filter (amplitude) ; use a high pass filter .  filter is a ramp 
 %       function of radial distance .  amplitude defines the response:
-%               out(r) = in(r) + in(r)*ramp(r)
+%               out(r) = in(r) + amplitude*in(r)*ramp(r)
 %   - nonavs (0/1) : remove navigator data from k=0 ?
 %   - Reg (0) : Thikonov regularization weight. Default is 0 
 
@@ -72,6 +75,7 @@ function x = recon3dflex(varargin)
     defaults.despike = [];
     defaults.nonavs = 0;
     defaults.hp_filter = 0;
+    defaults.lp_filter = 0;
     defaults.Reg = 0;
 
     % parse input parameters
@@ -88,12 +92,7 @@ function x = recon3dflex(varargin)
     % go to single precision to save memory!
     kdata = single(kdata);
     klocs = single(klocs);
-
-    % 
-    % if args.coilwise % rearrange for coil-wise reconstruction of frame 1 (for making SENSE maps)
-    %     kdata = permute(kdata(:,:,1,:),[1,2,4,3]);
-    % end
-
+    
     N = ceil(N*args.resfac); % upsample N (image matrix size)
     
     % cut off first 50 pts of acquisition (sometimes gets corrupted)
@@ -106,6 +105,11 @@ function x = recon3dflex(varargin)
     nframes = size(kdata,3); % number of frames
     ncoils = size(kdata,4); % number of coils
     framesize = ndat*nviews;  % number of data per frame.
+
+    % coil mapping: rearrange for coil-wise reconstruction of frame 1 (for making SENSE maps)
+    % if (args.coilwise==1) 
+    %     kdata = permute(kdata(:,:,1,:),[1,2,4,3]);
+    % end
 
     if isempty(args.frames)
         args.frames = 1:nframes; % default - use all frames
@@ -137,7 +141,7 @@ function x = recon3dflex(varargin)
     end
 
     % scale echoes using navigator data
-    if args.k0correct>0
+    if args.k0correct>0 && args.coilwise==0
         kdata = aslrec.k0correct(kdata, klocs, args.k0correct);
     end
     
@@ -145,6 +149,11 @@ function x = recon3dflex(varargin)
     % run a high pass filter (FBP) with speficified order
     if args.hp_filter>0
         kdata  = aslrec.hp_filter(kdata, klocs, 1, args.hp_filter);
+    end
+
+    % run a Low pass Fermi filter (FBP) with speficified cut-off fraction
+    if args.lp_filter>0
+        kdata  = aslrec.lp_filter(kdata, klocs, args.lp_filter);
     end
 
     % Remove spikes from data
@@ -222,11 +231,17 @@ function x = recon3dflex(varargin)
 
             % update sizes
             ndat = size(kdata,1);   % number of data per view.
-            nviews = size(kdata,2);  % number of view per frame
+            nviews = size(kdata,2);  % number of view per frame - now it's nviews*nframes!
             nframes = size(kdata,3); % number of frames is now the number of coils
             ncoils = size(kdata,4); % number of coils should be 1
             framesize = ndat*nviews;  % number of data per frame.
             args.frames = 1:nframes;
+
+            % scale echoes using navigator data
+            if args.k0correct>0
+                kdata = aslrec.k0correct(kdata, klocs, args.k0correct);
+            end
+    
         otherwise
             % do nothing
     end
@@ -238,6 +253,8 @@ function x = recon3dflex(varargin)
     % initialize x
     x = zeros([N(:)',length(args.frames)]);
     
+    fprintf('\nData ready for recon: %d k-space locations with %d coils for %d image voxels\n', ndat*nviews, ncoils, N(1)*N(2)*N(3));
+
     if (args.mrf_mode==0)
         % calculate a new system operator  just once
         [A,w, omega_msk] = make_system_matrix(klocs(:,1:nviews,:), N, fov, nufft_args);
@@ -312,6 +329,10 @@ function x = recon3dflex(varargin)
             % changes from frame to frame.
             views = [1:nviews] + nviews*(i-1);
             [A,w, omega_msk] = make_system_matrix(klocs(:,views, :), N, fov, nufft_args);
+
+            % test without DCF
+            %w=1;
+
             if ncoils > 1   && args.coilwise==0 % sensitivity encoding
                 A = Asense(A,args.smap);
             end
@@ -348,7 +369,7 @@ function x = recon3dflex(varargin)
                     % below.
                     b = Aold' * b;
                     [tmp, flag, rRes] = pcg(Aregtv, b(:), 1e-5, args.niter,[],[], x0(:));
-                    fprintf('regularized CG ended with residual fraction: %0.3g \n', rRes);
+                    fprintf('TV regularized CG ended with residual fraction: %0.3g \n', rRes);
                     x(:,:,:,i) = reshape(tmp, N);
                 else
                     % solve with CG
@@ -376,8 +397,10 @@ function [A,w, omega_msk] = make_system_matrix(klocs, N, fov, nufft_args)
     
     % (LHG : this creates the system matrix A as a NUFFT )
     A = Gnufft(true(N),[omega,nufft_args]); % NUFFT
-
-    w = aslrec.pipedcf(A,10); % calculate density compensation
+    
+    % calculate density compensation
+    w = aslrec.pipedcf(A,10); 
+    %w = 1;   % pipe-menon is not very useful in undersampled data ...?
 
     % use single precision to make things faster and use less memory
     A.arg.st.sn = single(A.arg.st.sn);

@@ -16,7 +16,7 @@ klocs_tmp = squeeze(klocs(:,1,:));
 R = sqrt(sum(klocs_tmp.^2, 2));
 k0inds = find(R<1e-5);
 % keep the ends 
-k0inds = k0inds(2:end-1);
+k0inds = k0inds(1:end-1);
 
 
 if length(k0inds) < 10
