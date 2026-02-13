@@ -178,7 +178,7 @@ int nframes = 2 with {1, , 2, VIS, "number of frames",};
 int ndisdaqtrains = 2 with {0, , 2, VIS, "number of disdaq echo trains at beginning of scan loop",};
 int ndisdaqechoes = 0 with {0, , 0, VIS, "number of disdaq echos at beginning of echo train",};
 
-int varflip = 1 with {0,1,1, VIS, "do variable flip angles (FSE case)- make sure opflip=180 for this", };
+int varflip = 0 with {0,1,1, VIS, "do variable flip angles (FSE case)- make sure opflip=180 for this", };
 float arf180, arf180ns; 
 
 int ro_type = 3 with {1, 4, 2, VIS, "(1) FSE, (2) FSE with spiral out, (3) SPGR, (4) bSSFP ",};
@@ -1048,15 +1048,15 @@ STATUS predownload( void )
 	
 	fprintf(stderr, "predownload(): calling readprep() to read in ASL prep 2 pulse\n");
 	if (readprep(prep2_id, &prep2_len,
-		prep2_rho_lbl, prep2_theta_lbl, prep2_grad_lbl,
-		prep2_rho_ctl, prep2_theta_ctl, prep2_grad_ctl) == 0)
+				 prep2_rho_lbl, prep2_theta_lbl, prep2_grad_lbl,
+				 prep2_rho_ctl, prep2_theta_ctl, prep2_grad_ctl) == 0)
 	{
-		epic_error(use_ermes,"failure to read in ASL prep 2 pulse", EM_PSD_SUPPORT_FAILURE, EE_ARGS(0));
+		epic_error(use_ermes, "failure to read in ASL prep 2 pulse", EM_PSD_SUPPORT_FAILURE, EE_ARGS(0));
 		return FAILURE;
+		
 	}
 	prep2_Npoints = prep2_len;
-	
-	/* update presat pulse parameters */
+	/* update presa parameters */
 	pw_rfps1 = 1ms; /* 1ms hard pulse */
 	pw_rfps1a = 0; /* hard pulse - no ramp */
 	pw_rfps1d = 0;
