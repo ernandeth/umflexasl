@@ -85,7 +85,7 @@ function x = recon3dflex(varargin)
     args = vararg_pair(defaults,varargin);
 
     % get data from pfile
-    if (args.mrf_mode == 1) || (args.coilwise == 2)
+    if (args.mrf_mode > 0) || (args.coilwise == 2)
         read_mrf_data_flag = 1;
     else
         read_mrf_data_flag = 0;
@@ -108,21 +108,6 @@ function x = recon3dflex(varargin)
     nframes = size(kdata,3); % number of frames
     ncoils = size(kdata,4); % number of coils
     framesize = ndat*nviews;  % number of data per frame.
-
-    % mrf_mode 2, means that the frames even and odd frames will be
-    % aggregates into two single frames
-    if args.mrf_mode==2
-        odds = zeros(ndat,nviews*nframes/2, 1, ncoils);
-        evens = zeros(ndat,nviews*nframes/2, 1, ncoils);
-        for f=1:2:nframes-1
-            oviews = [1:nviews] + (f-1)*nviews; 
-            odds(:,oviews,1,:) = kdata(:,:,f,:);
-
-            eviews = [1:nviews] + f*nviews; 
-            evens(:,eviews,1,:) = kdata(:,:,f+1,:);
-
-        end
-    end
 
     % coil mapping: rearrange for coil-wise reconstruction of frame 1 (for making SENSE maps)
     % if (args.coilwise==1) 
@@ -153,16 +138,18 @@ function x = recon3dflex(varargin)
 
     end
 
-    % remove navigator data before reconstruction
-    if args.nonavs>0
-        [kdata klocs] = aslrec.rm_navs(kdata, klocs);
-    end
 
     % scale echoes using navigator data
     if args.k0correct>0 && args.coilwise==0
         kdata = aslrec.k0correct(kdata, klocs, args.k0correct);
     end
     
+    % remove navigator data before reconstruction
+    if args.nonavs>0
+        [kdata klocs] = aslrec.rm_navs(kdata, klocs);
+        ndat = size(kdata,1);   % number of data per view.
+        
+    end
 
     % run a high pass filter (FBP) with speficified order
     if args.hp_filter>0
@@ -264,6 +251,44 @@ function x = recon3dflex(varargin)
             % do nothing
     end
 
+    % mrf_mode 2, means that the frames even and odd frames will be
+    % aggregates into two single frames
+    if args.mrf_mode==2
+
+        % rearrange the kdata and their locations
+        odds = zeros(ndat,nviews*nframes/2, 1, ncoils);
+        evens = zeros(ndat,nviews*nframes/2, 1, ncoils);
+        
+        oddlocs = zeros(ndat,nviews*nframes/2, 3);
+        evenlocs = zeros(ndat,nviews*nframes/2, 3);
+        
+        for f=1:nframes/2
+            vx = [1:nviews] + (f-1)*nviews; 
+
+            % split the data into odd and even frames
+            odds(:,vx,1,:) = kdata(:,:,2*f-1,:);
+            evens(:,vx,1,:) = kdata(:,:,2*f,:);
+        
+            % split the kspace locations into odd and even frames too
+            ovx = [1:nviews] + (2*f-2)*nviews; 
+            evx = [1:nviews] + (2*f-1)*nviews;
+            
+            oddlocs(:,vx,:) = klocs(:,ovx,:);
+            evenlocs(:,vx,:) = klocs(:,evx,:);
+        end
+        kdata = cat(3, odds,evens);
+        klocs = cat(2, oddlocs,evenlocs);
+
+        % re-calculate sizes
+        ndat = size(kdata,1);   % number of data per view.
+        nviews = size(kdata,2);  % number of view per frame
+        nframes = size(kdata,3); % number of frames
+        ncoils = size(kdata,4); % number of coils
+        framesize = ndat*nviews;  % number of data per frame.
+        args.frames = 1:nframes;
+    end
+
+
 
     % set nufft arguments
     nufft_args = {N, 6*ones(1,3), 2*N, N/2, 'table', 2^10, 'minmax:kb'};
@@ -326,8 +351,8 @@ function x = recon3dflex(varargin)
                     % case will call Matlab's pcg instead of the cg_solve
                     % below.
                     b = Aold' * b;
-                    [tmp, flag, rRes] = pcg(Aregtv, b(:), 1e-4, args.niter,[],[], x0(:));
-                    fprintf("TV Regularized CG ended with residual fraction: %0.3g \n", rRes);
+                    [tmp, flag, rRes] = pcg(Areg, b(:), 1e-4, args.niter,[],[], x0(:));
+                    fprintf("Tikhonov Regularized CG ended with residual fraction: %0.3g \n", rRes);
                     x(:,:,:,i) = reshape(tmp, N);
 
                 else
@@ -386,8 +411,8 @@ function x = recon3dflex(varargin)
                     % case will call Matlab's pcg instead of the cg_solve
                     % below.
                     b = Aold' * b;
-                    [tmp, flag, rRes] = pcg(Aregtv, b(:), 1e-5, args.niter,[],[], x0(:));
-                    fprintf('TV regularized CG ended with residual fraction: %0.3g \n', rRes);
+                    [tmp, flag, rRes] = pcg(Areg, b(:), 1e-5, args.niter,[],[], x0(:));
+                    fprintf('Tikhonov regularized CG ended with residual fraction: %0.3g \n', rRes);
                     x(:,:,:,i) = reshape(tmp, N);
                 else
                     % solve with CG
