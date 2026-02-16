@@ -5,6 +5,7 @@ umvsasl
 *.cnvendian*
 *.cpp
 *.swp
+*.asv
 psdsrc/*.txt
 *.report
 *.runtime.h
